@@ -133,14 +133,22 @@ fn a_status_read_begun_before_staging_is_followed_by_another() {
     peer.git.track(Some(input("feature")), true, now);
     peer.git.poll(now);
     let (requested, _) = peer.request();
-    peer.complete(requested, Completion::Status(Ok(status(0, 0, 0))), now);
+    peer.complete(
+        requested,
+        Completion::Status(Ok(focused(status(0, 0, 0)))),
+        now,
+    );
     let later = now + REFRESH;
     peer.git.track(Some(input("feature")), true, later);
     peer.git.poll(later);
     let (requested, _) = peer.request();
 
     peer.git.refresh_staged(later);
-    peer.complete(requested, Completion::Status(Ok(status(0, 0, 0))), later);
+    peer.complete(
+        requested,
+        Completion::Status(Ok(focused(status(0, 0, 0)))),
+        later,
+    );
 
     assert_eq!(peer.git.status().unwrap().staged, 1, "it missed the write");
     assert_eq!(peer.git.due, Some(later), "so another follows at once");

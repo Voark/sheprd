@@ -98,6 +98,9 @@ review-withdraw-late = The agent already has those notes
 review-withdrawn = Notes withdrawn
 review-notes-copied = Notes copied
 review-copied = Copied to clipboard
+review-open-in-editor = Open in editor
+# $path is the file's full path.
+review-file-gone = { $path } is no longer in the checkout
 review-path-copied = Path copied
 review-hunk-copied = Hunk copied
 # A hunk's button that stages it for the next commit, and what it says once

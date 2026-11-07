@@ -1,5 +1,5 @@
 //! Committing a checkout: everything in it, or only what is staged.
-use super::{Error, Outcome, checkout_status, clean, git};
+use super::{Error, Outcome, checkout_dirty, clean, git};
 use std::{
     hash::{DefaultHasher, Hash as _, Hasher as _},
     time::Instant,
@@ -40,7 +40,7 @@ pub(super) fn all(
     deadline: Instant,
     cancelled: &impl Fn() -> bool,
 ) -> crate::Result<Outcome> {
-    if !checkout_status(checkout, deadline, cancelled)?.dirty() {
+    if !checkout_dirty(checkout, deadline, cancelled)? {
         return Err(Error::NothingToCommit.into());
     }
     git(
