@@ -257,13 +257,15 @@ fn lines_compare_as_they_were_shown() {
 fn a_name_with_pathspec_characters_stages_only_itself() {
     let (dir, checkout) = checkout();
     let root = dir.path();
-    std::fs::write(root.join("[a]*.txt"), "new\n").unwrap();
-    std::fs::write(root.join("a.log"), "other\n").unwrap();
+    // As a glob `[a].txt` also names `a.txt`, whose edit must stay
+    // unstaged. Windows forbids `*` and `?` in a name, so a bracket it is.
+    std::fs::write(root.join("[a].txt"), "new\n").unwrap();
+    std::fs::write(root.join("a.txt"), numbered(&[(5, "edited")])).unwrap();
 
-    stage_file(&checkout, &whole("[a]*.txt", &["new"]), same).unwrap();
+    stage_file(&checkout, &whole("[a].txt", &["new"]), same).unwrap();
 
     assert_eq!(
         git(root, &["diff", "--cached", "--name-only"]).trim(),
-        "\"[a]*.txt\"".trim_matches('"')
+        "[a].txt"
     );
 }
