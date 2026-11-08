@@ -258,6 +258,70 @@ desktop keyring (`dev.herdr.gpui.gitlab`), or with `[gitlab]
 allow_plaintext_credentials = true` the private `0600` `gitlab-credentials`
 file beside the GUI config. A headless window never reads or writes them.
 
+Azure DevOps repositories are read with `AZURE_DEVOPS_EXT_PAT` from the
+login shell, else the personal access token saved for the repository's
+organization, else the Azure CLI's sign-in (`az login`). The account menu's
+**Azure DevOps** tab saves a token: type the organization (it starts at one
+the open checkouts read) and paste a token with the Code (Read) and Work
+Items (Read) scopes, made from the page's link to
+`https://dev.azure.com/<organization>/_usersSettings/tokens`. **Check and
+save** asks the organization's `_apis/connectionData` whom it signs in as and
+`_apis/projects` how many projects it shows before saving, and keeps the
+token in its field when the check fails. Each organization's card shows the
+account, where its token comes from, and **Forget** for one saved here. A
+repository waiting for a token shows a banner in its section that opens the
+tab, and marks the title bar's account button. Tokens are one
+credential-store record of `organization<TAB>token` lines, at most 32
+organizations: the desktop keyring (`dev.herdr.gpui.azure-devops`), or with
+`[azure_devops] allow_plaintext_credentials = true` the private `0600`
+`azure-devops-credentials` file beside the GUI config. Changing that setting
+reaches running workers at once, which sync again with the new store. When
+Azure DevOps refuses a token, the worker tries the saved token, then the
+Azure CLI's sign-in, and the shell's token last: that one is read once per
+run, so it may be the token just refused. A saved token that is still the
+refused one goes after them all.
+
 Merge requests are not listed yet. They would need `PullRequest`-like
 metadata in the shared schema, which is a contract change for both
 applications.
+
+## Azure DevOps
+
+`azure.rs` reads an Azure DevOps repository (`dev.azure.com`, keyed
+`organization/project/repository`) with the token `AZURE_DEVOPS_EXT_PAT`
+names, else the Azure CLI's sign-in: its active pull requests, the latest
+100 completed and 25 abandoned ones, and its project's open work items
+(keyed `organization/project`, so two repositories of one project list each
+once). The reader's display name, from `connectionData`, makes Mine work.
+
+Beyond the open checkouts, each organization a checkout's remote names
+becomes one more project, named after the organization, read by a remote
+worker (`service/remote.rs`, `Service::start_remote`) that needs no
+checkout: it finds no repository, reads no branches, opens no database, and
+takes no action (one asked for is refused with a notice). It lists every
+pull request the reader created in the organization
+(`_apis/git/pullrequests?searchCriteria.creatorId=<connectionData id>&searchCriteria.status=all`),
+in every state, a page of 100 at a time up to 500, each keyed by its own
+repository, so a pull request a checkout lists too shows once. It also reads
+the organization's catalog of projects and repositories
+(`_apis/git/repositories`, at most 2,000, disabled ones left out) when it
+starts and on Refresh. A remote worker reads again every five minutes.
+
+The Pull requests search row's Projects menu lists each organization's
+catalog; picking a repository starts a remote worker for its pull requests
+alone (active and recently settled, no work items), at most 16 at once,
+until it is picked again or its pill is closed. These last the session: an
+organization stays once known, and nothing about them is saved. The State
+menu beside the Open toggle narrows the list to all, open (with drafts, as
+the toggle does), draft, merged, or closed pull requests; Azure DevOps'
+abandoned ones read as closed.
+
+Mine on Azure DevOps matches the reader by identity: each listing keeps
+the keys of the pull requests whose `createdBy.id` is connectionData's
+`authenticatedUser.id` (`Snapshot::authored`, in memory only), since two
+people can share a display name. Each active pull request's reviewer votes
+give its review verdict (`azure::pull_request::review`), shown in the
+Review column beside GitHub's and never stored.
+
+A section narrows to some projects through the projects menu in its search
+row ("All projects" while none is picked); backends keep their pills.

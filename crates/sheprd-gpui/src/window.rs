@@ -264,6 +264,8 @@ pub(crate) struct SheprdWindow {
     pub(crate) listening_ports: crate::listening_ports::ListeningPorts,
     pub(crate) live: LiveState,
     pub(crate) local_error: Option<String>,
+    /// Every port this computer's user listens on, for the Ports section.
+    pub(crate) local_ports: crate::local_ports::LocalPorts,
     /// Draws the moving status marks the sidebar and the tab strip reserve
     /// room for; see `mark_layer`.
     pub(crate) mark_layer: Entity<crate::mark_layer::MarkLayer>,
@@ -743,6 +745,9 @@ impl SheprdWindow {
         self.update_checkpoints(cx);
         self.update_port_forwards(cx);
         if self.update_listening_ports() {
+            cx.notify();
+        }
+        if self.update_local_ports() {
             cx.notify();
         }
         #[cfg(feature = "azure")]

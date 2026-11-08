@@ -11,6 +11,7 @@ pub enum AppCommand {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum WindowCommand {
     List,
+    Alerts,
     New {
         session: Option<String>,
     },
@@ -56,6 +57,7 @@ pub(super) fn window(args: &mut Args) -> Result<WindowCommand, CliError> {
     };
     Ok(match verb.to_str() {
         Some("list") => WindowCommand::List,
+        Some("alerts") => WindowCommand::Alerts,
         Some("new") => WindowCommand::New {
             session: args.text_option("--session")?,
         },
@@ -84,7 +86,8 @@ fn size(text: std::ffi::OsString) -> Result<Size, CliError> {
 }
 
 /// The panel names `ui panel` takes, as its errors and help name them.
-const PANELS: &str = "workspaces|overview|pull-requests|issues|tasks|security|automations|usage";
+const PANELS: &str =
+    "workspaces|overview|pull-requests|issues|tasks|security|automations|ports|usage";
 
 pub(super) fn ui(args: &mut Args) -> Result<UiCommand, CliError> {
     let verb = args.verb().ok_or(CliError::MissingArgument {

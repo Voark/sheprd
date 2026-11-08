@@ -1,6 +1,6 @@
 //! The daemon request a command becomes against a snapshot.
 
-use crate::Command;
+use super::Command;
 use serde_json::{Value, json};
 use sheprd_client::{Method, protocol::ClientShellSnapshot};
 
@@ -156,6 +156,7 @@ pub fn request(command: Command, snapshot: &ClientShellSnapshot) -> Option<(Meth
         | Command::FocusPreviousRegion
         | Command::ToggleZenMode
         | Command::DevicesOverview
+        | Command::NotificationHistory
         | Command::NewCoreTerminal
         | Command::MirrorCorePane
         | Command::ConvertToChat
