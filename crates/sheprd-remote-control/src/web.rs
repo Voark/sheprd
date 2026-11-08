@@ -452,6 +452,10 @@ impl IntoResponse for ApiError {
         // answers every phone that registers, which says nothing new.
         if status.is_server_error() && !matches!(self, Self::NoPush) {
             tracing::warn!(status = status.as_u16(), error = %self, "request failed");
+        } else if status.is_client_error() {
+            // A phone that cannot sign in or reconnect shows only a status
+            // on the request line; the reason says which check refused it.
+            tracing::info!(status = status.as_u16(), error = %self, "request refused");
         }
         (status, axum::Json(json!({ "error": self.to_string() }))).into_response()
     }

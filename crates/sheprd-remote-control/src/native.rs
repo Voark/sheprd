@@ -122,13 +122,19 @@ async fn serve(mut socket: WebSocket, state: Shared, device: DeviceId, token: Se
     let session = tokio::spawn(live::run(state, token, device, from_phone, to_phone));
     let mut ping = tokio::time::interval(PING_INTERVAL);
     ping.reset();
-    loop {
+    let opened = std::time::Instant::now();
+    // Why the socket ended, for the log: a phone that keeps losing its
+    // connection is otherwise only a run of new sockets there.
+    let ended = loop {
         tokio::select! {
             message = outbound.recv() => {
-                let Some(message) = message else { break };
+                let Some(message) = message else { break Ended::SessionGone };
                 let bye = matches!(message, ServerMessage::Bye { .. });
-                if !send(&mut socket, &message).await || bye {
-                    break;
+                if !send(&mut socket, &message).await {
+                    break Ended::SendFailed;
+                }
+                if bye {
+                    break Ended::Bye;
                 }
             }
             frame = socket.recv() => match frame {
@@ -143,22 +149,58 @@ async fn serve(mut socket: WebSocket, state: Shared, device: DeviceId, token: Se
                     if let Some(message) = reply {
                         let error = ServerMessage::Error { message: message.to_owned() };
                         if !send(&mut socket, &error).await {
-                            break;
+                            break Ended::SendFailed;
                         }
                     }
                 }
                 Some(Ok(Message::Ping(_) | Message::Pong(_))) => {}
-                Some(Ok(Message::Binary(_) | Message::Close(_)) | Err(_)) | None => break,
+                Some(Ok(Message::Binary(_))) => break Ended::Binary,
+                Some(Ok(Message::Close(_))) => break Ended::PhoneClosed,
+                Some(Err(error)) => {
+                    tracing::debug!(%error, "live socket read failed");
+                    break Ended::ReadFailed;
+                }
+                None => break Ended::Gone,
             },
             _ = ping.tick() => {
                 if socket.send(Message::Ping(Default::default())).await.is_err() {
-                    break;
+                    break Ended::PingFailed;
                 }
             }
         }
-    }
+    };
+    let seconds = opened.elapsed().as_secs();
+    tracing::info!(reason = ended.reason(), seconds, "live socket ended");
     session.abort();
     let _ = socket.send(Message::Close(None)).await;
+}
+
+/// How a live socket ended.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Ended {
+    Binary,
+    Bye,
+    Gone,
+    PhoneClosed,
+    PingFailed,
+    ReadFailed,
+    SendFailed,
+    SessionGone,
+}
+
+impl Ended {
+    fn reason(self) -> &'static str {
+        match self {
+            Self::Binary => "the phone sent a binary frame",
+            Self::Bye => "the session said bye",
+            Self::Gone => "the connection went without a close",
+            Self::PhoneClosed => "the phone closed it",
+            Self::PingFailed => "a ping could not be sent",
+            Self::ReadFailed => "reading from the phone failed",
+            Self::SendFailed => "sending to the phone failed",
+            Self::SessionGone => "the session ended",
+        }
+    }
 }
 
 async fn send(socket: &mut WebSocket, message: &ServerMessage) -> bool {

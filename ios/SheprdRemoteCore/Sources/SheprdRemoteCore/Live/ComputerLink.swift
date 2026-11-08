@@ -21,6 +21,10 @@ public enum LinkUpdate: Hashable, Sendable {
     /// Why each address failed, once as the link goes offline: the status
     /// keeps a short reason for the screen, and a retry says the same again.
     case unreachable([String])
+    /// Why the link went offline after an address answered: signing in or
+    /// opening the socket there failed, or an open socket ended. Once per
+    /// outage for a failed start, and once for each socket that drops.
+    case lost(String)
 }
 
 /// Failures the I/O closures report that change what the link does next.
@@ -176,6 +180,8 @@ public actor ComputerLink {
         // Apart from `offline`: a socket that drops is offline before its
         // first race, and that race's failures are the ones worth reporting.
         var reported = false
+        // Like `reported`, for a start that fails after an address answers.
+        var explained = false
         while !Task.isCancelled {
             if !offline { continuation.yield(.status(.connecting)) }
             do {
@@ -185,8 +191,8 @@ public actor ComputerLink {
                     reported = true
                     throw Offline(reason: "No address answered (\(origins.count) tried)")
                 }
-                let token = try await io.session(origin)
-                let opened = try await io.connect(origin, token)
+                let token = try await traced("sign-in at \(origin)") { try await io.session(origin) }
+                let opened = try await traced("live socket at \(origin)") { try await io.connect(origin, token) }
                 connection = opened
                 connected = origin
                 connectedAt = .now
@@ -194,11 +200,22 @@ public actor ComputerLink {
                 retryNow = false
                 offline = false
                 reported = false
+                explained = false
                 continuation.yield(.status(.online(origin: origin)))
-                for (view, since) in watched {
-                    try await opened.send(.subscribe(view, since: since, size: sizes[view]))
+                let openedAt = ContinuousClock.now
+                let ending: Ending
+                do {
+                    for (view, since) in watched {
+                        try await opened.send(.subscribe(view, since: since, size: sizes[view]))
+                    }
+                    ending = try await follow(opened)
+                } catch {
+                    if !Task.isCancelled {
+                        let summary = PathFailure.summary(error, after: .now - openedAt)
+                        continuation.yield(.lost("live socket at \(origin) failed: \(summary)"))
+                    }
+                    throw error
                 }
-                let ending = try await follow(opened)
                 connection = nil
                 opened.close()
                 if ending == .revoked {
@@ -207,6 +224,10 @@ public actor ComputerLink {
                 }
                 // An expired session reconnects at once with a new token.
                 if ending == .expired { continue }
+                if !Task.isCancelled {
+                    let after = PathFailure.seconds(.now - openedAt)
+                    continuation.yield(.lost("live socket at \(origin) ended after \(after)"))
+                }
                 throw Offline(reason: "The connection closed")
             } catch LinkError.unauthorized {
                 continuation.yield(.status(.revoked))
@@ -220,6 +241,10 @@ public actor ComputerLink {
             } catch {
                 connection = nil
                 guard !Task.isCancelled else { return }
+                if let failed = error as? StartFailed, !explained {
+                    continuation.yield(.lost(failed.line))
+                    explained = true
+                }
                 let reason = (error as? Offline)?.reason ?? "The connection failed"
                 continuation.yield(.status(.offline(reason: reason)))
                 offline = true
@@ -230,6 +255,24 @@ public actor ComputerLink {
 
     private struct Offline: Error {
         let reason: String
+    }
+
+    /// A start that failed after an address answered, and how, for logs.
+    private struct StartFailed: Error {
+        let line: String
+    }
+
+    /// Runs one step of starting a connection, naming it in the failure.
+    /// What the link acts on, such as a refused device, passes unchanged.
+    private func traced<T>(_ step: String, _ body: () async throws -> T) async throws -> T {
+        let started = ContinuousClock.now
+        do {
+            return try await body()
+        } catch let error as LinkError {
+            throw error
+        } catch {
+            throw StartFailed(line: "\(step) failed: \(PathFailure.summary(error, after: .now - started))")
+        }
     }
 
     private enum Ending { case closed, expired, revoked }

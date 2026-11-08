@@ -550,6 +550,12 @@ final class Fleet {
             let line = "offline from \(Date.now.ISO8601Format()): " + failures.prefix(Self.failuresReported).joined(separator: "; ")
             log.error("\(self.machines[index].computer.name, privacy: .public) \(line, privacy: .public)")
             unreported[device, default: UnreportedFailures()].add(line)
+        case let .lost(failure):
+            // An address answered, so the daemon may have logged its side;
+            // this line says what the phone saw, at the same moment.
+            let line = "connection lost at \(Date.now.ISO8601Format()): \(failure)"
+            log.error("\(self.machines[index].computer.name, privacy: .public) \(line, privacy: .public)")
+            unreported[device, default: UnreportedFailures()].add(line)
         case let .event(.home(home)):
             if let tags = home.tags { onTags?(tags, machines[index].computer) }
             // The computer's load moves every few seconds; only the header
