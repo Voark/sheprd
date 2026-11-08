@@ -48,6 +48,7 @@ mod sprites;
 pub(crate) mod ssh_hosts;
 pub(crate) mod status_bar;
 mod status_icons;
+mod tab_labels;
 pub(crate) mod tab_layout;
 #[cfg(any(
     feature = "azure",
@@ -94,7 +95,7 @@ pub use github::{GitHubAccount, GitHubConfig};
 pub use layout::{Density, Layout, LayoutMode, Style};
 pub(crate) use notifications::NotificationDelivery;
 pub use notifications::{
-    BellConfig, ClipboardToast, ClipboardToastPosition, NotificationConfig, SoundConfig,
+    BellConfig, ClipboardToast, ClipboardToastPosition, NotificationConfig, QuietHours, SoundConfig,
 };
 use notifications::{ClipboardToastSettings, NotificationSettings};
 pub use option_as_alt::{OptionAsAlt, OptionKeys};
@@ -102,6 +103,7 @@ pub use padding::Padding;
 pub(crate) use padding::{Axis, MAX_PADDING, Side, Sides};
 pub use remote::RemoteConfig;
 use serde::Deserialize;
+pub use sheprd_orchestrator::azure::Config as AzureDevOpsConfig;
 pub use sheprd_orchestrator::gitlab::Config as GitLabConfig;
 pub use sheprd_remote::config::AzureConfig;
 #[cfg(feature = "azure")]
@@ -142,6 +144,7 @@ use std::{
     io::ErrorKind,
     path::{Path, PathBuf},
 };
+pub use tab_labels::TabLabels;
 pub use tab_layout::TabLayoutMode;
 pub use theme::Theme;
 pub(crate) use theme::ThemeName;
@@ -176,6 +179,8 @@ pub struct Config {
     pub agents_placement: AgentsPlacement,
     /// What shows behind the main window's terminals and chrome.
     pub azure: AzureConfig,
+    /// Where Azure DevOps tokens pasted in the account menu are saved.
+    pub azure_devops: AzureDevOpsConfig,
     pub backdrop: Backdrop,
     pub bell: BellConfig,
     pub boat: BoatConfig,
@@ -304,6 +309,8 @@ pub struct Config {
     pub status_bar: StatusBar,
     /// The set agent status is drawn with.
     pub status_icons: StatusIcons,
+    /// What a tab with no name of its own is called.
+    pub tab_labels: TabLabels,
     /// How tab strips draw their tabs, from View > Tab Layout.
     pub tab_layout: TabLayoutMode,
     pub tabs: FontConfig,
@@ -412,6 +419,7 @@ impl Default for Config {
             agent_skill: AgentSkillConfig::default(),
             agents_placement: AgentsPlacement::default(),
             azure: AzureConfig::default(),
+            azure_devops: AzureDevOpsConfig::default(),
             backdrop: Backdrop::default(),
             bell: BellConfig::default(),
             boat: BoatConfig::default(),
@@ -477,6 +485,7 @@ impl Default for Config {
             ssh: SshConfig::default(),
             status_bar: StatusBar::default(),
             status_icons: StatusIcons::default(),
+            tab_labels: TabLabels::default(),
             tab_layout: TabLayoutMode::default(),
             // Tabs are terminal chrome, so they read in the monospace face the
             // sidebar and terminal use, as they do in the reference UI.
@@ -504,6 +513,7 @@ struct Settings {
     agent_skill: AgentSkillConfig,
     agents_placement: AgentsPlacement,
     azure: AzureConfig,
+    azure_devops: AzureDevOpsConfig,
     backdrop: Backdrop,
     bell: BellConfig,
     boat: BoatConfig,
@@ -561,6 +571,7 @@ struct Settings {
     ssh: SshConfig,
     status_bar: StatusBar,
     status_icons: Option<status_icons::SavedIcons>,
+    tab_labels: TabLabels,
     tab_layout: TabLayoutMode,
     tabs: FontSettings,
     terminal: FontSettings,
@@ -839,6 +850,7 @@ impl Config {
         settings.github.client_id_with_override(None)?;
         settings.github.check_accounts()?;
         config.github = settings.github;
+        config.azure_devops = settings.azure_devops;
         config.gitlab = settings.gitlab;
         #[cfg(feature = "azure")]
         settings.azure.check()?;
@@ -941,6 +953,7 @@ impl Config {
         settings.mods.validate()?;
         config.mods = settings.mods;
         config.status_bar = settings.status_bar;
+        config.tab_labels = settings.tab_labels;
         config.tab_layout = settings.tab_layout;
         settings.ssh.check()?;
         config.ssh = settings.ssh;

@@ -16,7 +16,6 @@ mod error;
 mod fallback;
 mod hub;
 mod infos;
-pub(crate) mod panes;
 mod screen;
 mod selection;
 mod sidebar;
@@ -31,6 +30,7 @@ mod tests;
 
 pub(crate) use error::Error;
 pub(crate) use hub::{Hub, Start, State};
+pub(crate) use sheprd_session::panes;
 pub(crate) use view::{CoreTerminalView, Look};
 
 use crate::{
@@ -43,6 +43,10 @@ use gpui::{prelude::*, *};
 use panes::{Axis, Panes};
 use sheprd_backend::{Backend as _, Spawn, TerminalId, TerminalInfo};
 use std::collections::HashMap;
+
+/// The workspace of a window with no Herdr 1 installed. herdr-core has no
+/// workspaces of its own, so its tabs gather here until the app keeps them.
+pub(crate) const WORKSPACE: &str = "herdr-2";
 
 type Started = std::sync::mpsc::Receiver<Result<TerminalInfo, sheprd_core_client::Error>>;
 
@@ -189,6 +193,24 @@ impl CoreTerminals {
     /// mirror that only watches.
     pub(crate) fn drives(&self, tab: TabId) -> bool {
         self.tabs.get(&tab).is_some_and(|shown| !shown.observe)
+    }
+
+    /// The panes a driving tab draws: all of them, or only the zoomed one
+    /// once it covers the split. A mirror draws no chat.
+    pub(crate) fn visible_chat_panes(&self, tab: TabId) -> Vec<&TerminalId> {
+        let Some(shown) = self.tabs.get(&tab).filter(|shown| !shown.observe) else {
+            return Vec::new();
+        };
+        let zoomed = shown
+            .zoom_at(crate::motion::now())
+            .filter(|(_, amount)| *amount >= 1.)
+            .map(|(terminal, _)| terminal);
+        shown
+            .panes
+            .terminals()
+            .into_iter()
+            .filter(|terminal| zoomed.is_none_or(|zoomed| zoomed == *terminal))
+            .collect()
     }
 
     /// Makes `terminal` the pane in use in `tab`; whether that changed.

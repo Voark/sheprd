@@ -7,6 +7,7 @@
 mod api;
 mod attach;
 mod chat;
+mod convert;
 mod core;
 mod daemon;
 mod layout;
@@ -15,6 +16,7 @@ mod sessions;
 
 pub(crate) use api::ApiMethod;
 pub(crate) use chat::{Chat, Event, Summary, View};
+pub(crate) use convert::Error as ConvertError;
 #[cfg(test)]
 pub(crate) use layout::TerminalAgent;
 pub(crate) use layout::{Chat as ChatRow, Layout, Terminal, TerminalPane, Workspace};
@@ -25,7 +27,7 @@ use sheprd_client::ConnectTarget;
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex, PoisonError},
+    sync::{Arc, Mutex, PoisonError, atomic::AtomicBool},
     time::Duration,
 };
 use tokio::sync::{broadcast, watch};
@@ -47,6 +49,8 @@ pub enum Error {
     #[error("the chat program cannot be reached")]
     ChatUnavailable,
     #[error(transparent)]
+    Convert(#[from] convert::Error),
+    #[error(transparent)]
     Core(#[from] core::Error),
     #[error("Herdr refused: {0}")]
     Daemon(String),
@@ -64,6 +68,8 @@ pub enum Error {
     UnknownChat,
     #[error("no such workspace")]
     UnknownWorkspace,
+    #[error("chats cannot start inside WSL from here; open a terminal tab and start it there")]
+    WslChat,
     // keep-sorted end
 }
 
@@ -85,20 +91,25 @@ pub(crate) struct Hub {
     chats: Mutex<HashMap<String, (EndpointId, Arc<Chat>)>>,
     core: Option<Arc<core::Source>>,
     layout: watch::Receiver<Arc<Layout>>,
+    /// Terminal agents moving into chats now.
+    moving: convert::Moving,
     /// The primary session's own layout, to tell whether it answers.
     primary: watch::Receiver<Arc<Layout>>,
     program: Option<PathBuf>,
     sessions: Arc<sessions::Sessions>,
+    /// Where new checkouts go for work on a core.
+    worktrees: Option<PathBuf>,
 }
 
 impl Hub {
     /// Connects to the local daemon at `socket` (discovered when `None`)
     /// and every other running Herdr 1 session of this user, and keeps chat
-    /// connections, found in `chat_dir`, in step with their layout. Must run
-    /// inside a Tokio runtime.
+    /// connections, found in `chat_dir`, in step with their layout, and the
+    /// distributions saved in `wsl_catalog`. Must run inside a Tokio runtime.
     pub(crate) fn start(
         socket: Option<PathBuf>,
         chat_dir: Option<PathBuf>,
+        wsl_catalog: Option<PathBuf>,
         core_endpoint: crate::core_target::CoreTarget,
         state_dir: &Path,
     ) -> std::io::Result<Arc<Self>> {
@@ -109,7 +120,11 @@ impl Hub {
             .or_else(|| ConnectTarget::Local.socket_path().ok());
         let target = socket.map_or(ConnectTarget::Local, ConnectTarget::Socket);
         let (daemon_sender, daemon_layout) = watch::channel(Arc::new(Layout::default()));
-        let daemon = daemon::Daemon::start(daemon_sender, target.clone())?;
+        let daemon = daemon::Daemon::start(
+            daemon_sender,
+            target.clone(),
+            primary_socket.as_deref().and_then(sessions::session_name),
+        )?;
         let (core_sender, core_layout) = watch::channel(Arc::new(Layout::default()));
         let core = core::Source::start(core_sender, &target, core_endpoint, state_dir)?;
         let (base_sender, base_layout) = watch::channel(Arc::new(Layout::default()));
@@ -118,7 +133,7 @@ impl Hub {
             daemon_layout.clone(),
             core_layout,
         ));
-        let sessions = sessions::Sessions::start(primary_socket);
+        let sessions = sessions::Sessions::start(primary_socket, wsl_catalog);
         tokio::spawn(sessions::merge_sources(
             sender,
             base_layout,
@@ -133,10 +148,18 @@ impl Hub {
             chats: Mutex::new(HashMap::new()),
             core: Some(core),
             layout,
+            moving: convert::Moving::default(),
             primary: daemon_layout,
             program: locate_program(),
             sessions,
+            worktrees: core::worktree::root(),
         });
+        // A daemon started from a copy of its binary finds no program, and
+        // only a phone creating work would ever find out.
+        match hub.program() {
+            Some(program) => tracing::info!(program = %program.display(), "Chat program found"),
+            None => tracing::warn!("{}", Error::ProgramMissing),
+        }
         let follower = hub.clone();
         tokio::spawn(async move { follower.follow().await });
         Ok(hub)
@@ -208,10 +231,12 @@ impl Hub {
             chat_dir,
             chats: Mutex::new(HashMap::new()),
             core: None,
+            moving: convert::Moving::default(),
             primary: receiver.clone(),
             layout: receiver,
             program: None,
             sessions: sessions::Sessions::offline(),
+            worktrees: None,
         }
     }
 
@@ -250,6 +275,11 @@ impl Hub {
         agent: Agent,
         cwd: Option<&str>,
     ) -> Result<String> {
+        // The program here is this computer's: it cannot run in a
+        // distribution, and its endpoint could not be reached there.
+        if sessions::in_wsl(workspace) {
+            return Err(Error::WslChat);
+        }
         let program = self.program.as_deref().ok_or(Error::ProgramMissing)?;
         let layout = self.layout();
         let folder = layout
@@ -285,29 +315,41 @@ impl Hub {
     }
 
     /// A new workspace in `cwd`, on a new worktree when `branch` is given,
-    /// with a chat running `agent` in it. While a core answers the chat
+    /// with a chat running `agent` in it, in the Herdr 1 `session` this
+    /// daemon follows by that name (the primary otherwise). While a core answers the chat
     /// starts there, in its unlisted group: the core has no workspaces or
-    /// worktrees, so a branch is refused rather than sent to Herdr 1.
+    /// worktrees, so a branch's checkout is made here, never by Herdr 1.
     pub(crate) async fn create_workspace(
         &self,
         cwd: &str,
         branch: Option<&str>,
         agent: Agent,
+        session: Option<&str>,
     ) -> Result<CreatedWorkspace> {
+        // As in [`Hub::start_chat`]: the program here cannot run in a
+        // distribution, and a core would open the chat on this computer.
+        if session.is_some_and(sessions::is_wsl) {
+            return Err(Error::WslChat);
+        }
         let program = self.program.as_deref().ok_or(Error::ProgramMissing)?;
         if let Some(core) = self.active_core() {
-            if branch.is_some() {
-                return Err(core::Error::Unsupported.into());
-            }
             let (cwd, program) = (cwd.to_owned(), program.to_owned());
-            let pane = on_core(move || core.open_chat(agent, &program, &cwd)).await?;
+            let (branch, root) = (branch.map(str::to_owned), self.worktrees.clone());
+            let pane = on_core(move || match branch {
+                Some(branch) => {
+                    core.open_worktree_chat(agent, &program, &cwd, &branch, root.as_deref())
+                }
+                None => core.open_chat(agent, &program, &cwd),
+            })
+            .await?;
             return Ok(CreatedWorkspace {
                 workspace: core::UNLISTED.to_owned(),
                 pane,
             });
         }
         let opened = self
-            .call(
+            .call_in(
+                session,
                 ApiMethod::WorkspaceCreate,
                 json!({"cwd": cwd, "focus": false}),
             )
@@ -369,8 +411,12 @@ impl Hub {
 
     /// A new tab on the core for `workspace`'s folder, answered as Herdr
     /// answers one, once listed so a phone can open it. `None` when no
-    /// core answers and the tab is Herdr 1's to make.
+    /// core answers, or `workspace` is in WSL, and the tab is Herdr 1's to make.
     pub(crate) async fn new_core_tab(&self, workspace: &str) -> Result<Option<Value>> {
+        // A core on this computer knows neither a distribution nor its paths.
+        if sessions::in_wsl(workspace) {
+            return Ok(None);
+        }
         let Some(core) = self.active_core() else {
             return Ok(None);
         };
@@ -408,6 +454,45 @@ impl Hub {
             }
             result => result,
         }
+    }
+
+    /// [`Hub::call`] for a request whose ids do not say where it goes, such
+    /// as a new workspace: to the session this daemon follows by `session`'s
+    /// name, else as `call` sends it. The primary's own name is not among
+    /// those followed, so it goes to the primary.
+    pub(crate) async fn call_in(
+        &self,
+        session: Option<&str>,
+        method: ApiMethod,
+        params: Value,
+    ) -> Result<Value> {
+        let Some(session) = session.and_then(|name| self.sessions.get(name)) else {
+            return self.call(method, params).await;
+        };
+        let mut answer = session.api.call(method, params).await?;
+        sessions::prefix_answer(&mut answer, &session.name);
+        Ok(answer)
+    }
+
+    /// Where `path`, a file on this computer, is for the program in `pane`
+    /// when that pane is in a WSL distribution; `None` when it is not, and
+    /// the path reads the same there.
+    pub(crate) async fn wsl_path(&self, pane: &str, path: &Path) -> Result<Option<String>> {
+        if !sessions::in_wsl(pane) {
+            return Ok(None);
+        }
+        let (name, _) = sessions::owner(&json!({"pane_id": pane}))?.ok_or(Error::Response)?;
+        let session = self.sessions.get(&name).ok_or(Error::NotConnected)?;
+        let ConnectTarget::Wsl { distro, .. } = session.api.target() else {
+            return Ok(None);
+        };
+        let path = path.to_owned();
+        let mut paths = tokio::task::spawn_blocking(move || {
+            sheprd_client::wsl_paths(&distro, &[path], &AtomicBool::new(false))
+        })
+        .await
+        .map_err(|_| Error::NotConnected)??;
+        paths.pop().map(Some).ok_or(Error::Response)
     }
 
     /// The named session a request is for, with its ids as that session
@@ -602,6 +687,7 @@ pub(crate) fn layout_terminal(tab: &str, label: &str) -> Terminal {
         }],
         zoomed: false,
         agent: None,
+        convert: None,
     }
 }
 

@@ -7,6 +7,8 @@ use crate::harness::tests::{file_name, file_uri};
 
 mod rewind;
 
+mod streaming;
+
 const SESSION: &str = "5f1c9a2e-0000-4000-8000-00000000000a";
 
 fn harness(out: &Out) -> &Value {

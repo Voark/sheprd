@@ -143,6 +143,7 @@ impl SheprdWindow {
             activation_deadline: None,
             active: window.is_window_active(),
             activity: Default::default(),
+            agent_group: None,
             agent_sort: preferences::AgentSort::default(),
             agent_sort_modified: false,
             app_update_notes: Default::default(),
@@ -187,6 +188,7 @@ impl SheprdWindow {
             dispatch_setups: Default::default(),
             editor_open: None,
             editor_panes: Vec::new(),
+            editor_returns: Vec::new(),
             endpoints: vec![endpoint::Endpoint::new(
                 endpoint::LOCAL.into(),
                 // i18n: data
@@ -224,6 +226,7 @@ impl SheprdWindow {
             listening_ports: Default::default(),
             live: LiveState::default(),
             local_error: error,
+            local_ports: Default::default(),
             mark_layer,
             marked: String::new(),
             marked_selection: None,

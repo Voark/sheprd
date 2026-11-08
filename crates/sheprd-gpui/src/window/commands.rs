@@ -222,6 +222,7 @@ impl SheprdWindow {
         if !self.input_ready() {
             return false;
         }
+        self.note_editor_navigation(target.as_deref());
         let queued = self.request_focus_change(
             &fl!("window-notices-navigate"),
             Some((&target).into()),
@@ -611,6 +612,10 @@ impl SheprdWindow {
             }
             Command::DevicesOverview => {
                 self.open_devices_overview(window, cx);
+                return;
+            }
+            Command::NotificationHistory => {
+                self.show_notification_history(window, cx);
                 return;
             }
             Command::NewCoreTerminal => {

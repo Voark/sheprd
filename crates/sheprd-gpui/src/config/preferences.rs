@@ -33,6 +33,8 @@ pub(crate) enum Preference {
     ShowWindowControls(bool),
     /// `status_icons`: the set agent status is drawn with.
     StatusIcons(StatusIcons),
+    /// `[tab_labels] agent_title`: unnamed tabs show their agent's title.
+    TabAgentTitle(bool),
     /// `tab_layout`: how tab strips draw their tabs.
     TabLayout(TabLayoutMode),
     /// `edge_rail`: the bar on busy and finished rows.
@@ -45,6 +47,8 @@ pub(crate) enum Preference {
     NotificationPosition(Option<ToastHerdrPosition>),
     /// `[notifications] finished`: GUI-only, so there is no shared value to follow.
     NotificationFinished(bool),
+    /// `[notifications] quiet_hours`: GUI-only; `None` removes the window.
+    NotificationQuietHours(Option<QuietHours>),
     ClipboardEnabled(Option<bool>),
     ClipboardPosition(Option<ClipboardToastPosition>),
     /// `[terminal] padding_x` or `padding_y`: both sides of one axis.
@@ -70,6 +74,9 @@ pub(crate) enum Preference {
     SidebarActivityBar(bool),
     /// `[sidebar] automations`: whether the bar shows Automations.
     SidebarAutomations(bool),
+    /// `[sidebar] ports_count`: whether the bar counts the servers this
+    /// computer's user runs on the Ports icon.
+    SidebarPortsCount(bool),
     /// `[sidebar] device_footer`: when the sidebar draws its device footer.
     SidebarDeviceFooter(DeviceFooter),
     /// `[sidebar] change_counts`: whose line counts a worktree row shows.
@@ -181,6 +188,9 @@ impl Config {
                     (None, "status_icons", Some(value.as_str().into()))
                 }
                 Preference::EdgeRail(value) => (None, "edge_rail", Some(value.into())),
+                Preference::TabAgentTitle(value) => {
+                    (Some("tab_labels"), "agent_title", Some(value.into()))
+                }
                 Preference::TabLayout(mode) => (None, "tab_layout", Some(mode.name().into())),
                 Preference::FocusFollowsMouse(value) => {
                     (None, "focus_follows_mouse", Some(value.into()))
@@ -213,6 +223,11 @@ impl Config {
                 Preference::NotificationFinished(value) => {
                     (Some("notifications"), "finished", Some(value.into()))
                 }
+                Preference::NotificationQuietHours(value) => (
+                    Some("notifications"),
+                    "quiet_hours",
+                    value.map(|hours| hours.to_string().into()),
+                ),
                 Preference::ClipboardEnabled(value) => {
                     (Some("clipboard_toast"), "enabled", value.map(Into::into))
                 }
@@ -248,6 +263,9 @@ impl Config {
                 }
                 Preference::SidebarAutomations(value) => {
                     (Some("sidebar"), "automations", Some(value.into()))
+                }
+                Preference::SidebarPortsCount(value) => {
+                    (Some("sidebar"), "ports_count", Some(value.into()))
                 }
                 Preference::SidebarDeviceFooter(footer) => (
                     Some("sidebar"),

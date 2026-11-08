@@ -207,6 +207,11 @@ pub(super) fn window(call: Call<WindowOp>, cx: &mut App) -> Response {
                 windows: windows(cx),
             },
         },
+        WindowOp::Alerts => in_window(caller, cx, |view, _, _| Response::App {
+            reply: Reply::Alerts {
+                alerts: view.alert_infos(),
+            },
+        }),
         WindowOp::New { session } => {
             let target = match session {
                 Some(name) => {
@@ -291,18 +296,23 @@ pub(super) fn ui(call: Call<UiOp>, cx: &mut App) -> Response {
                 );
             }
             if !view.activity_panel_listed(panel) {
-                return Response::error(
-                    ErrorCode::Unsupported,
-                    format!(
+                let why = match panel {
+                    crate::sidebar::ActivityPanel::Tasks => {
+                        "No project in this window has a .beads folder".to_owned()
+                    }
+                    panel => format!(
                         "{} is turned off: [sidebar] {} = false",
                         panel.name(),
                         panel.name()
                     ),
-                );
+                };
+                return Response::error(ErrorCode::Unsupported, why);
             }
             view.show_activity_panel(panel, window, cx);
             Response::done(format!("Showing {}", panel.name()))
         }
+        UiOp::AgentGroups => agent_groups(view),
+        UiOp::AgentGroup { name } => pick_agent_group(view, name, cx),
         UiOp::StatusBar { switch } => {
             let visible = switch.apply(view.status_bar_visible);
             if visible != view.status_bar_visible {
@@ -331,6 +341,48 @@ pub(super) fn ui(call: Call<UiOp>, cx: &mut App) -> Response {
             }
         }
     })
+}
+
+/// Groups live in the agents panel, so without it there is nothing to show.
+fn no_agent_groups() -> Response {
+    Response::error(
+        ErrorCode::Unsupported,
+        "No coordinator groups: set [sidebar] coordinator_suffix and show the agents panel",
+    )
+}
+
+fn agent_groups(view: &SheprdWindow) -> Response {
+    let Some(groups) = view.agent_groups() else {
+        return no_agent_groups();
+    };
+    Response::App {
+        reply: Reply::AgentGroups {
+            current: view.agent_group.clone(),
+            groups: groups.names().iter().map(|&name| name.to_owned()).collect(),
+        },
+    }
+}
+
+fn pick_agent_group(
+    view: &mut SheprdWindow,
+    name: Option<String>,
+    cx: &mut gpui::Context<SheprdWindow>,
+) -> Response {
+    let Some(groups) = view.agent_groups() else {
+        return no_agent_groups();
+    };
+    if let Some(name) = &name
+        && !groups.names().contains(&name.as_str())
+    {
+        return super::not_found(format!("No coordinator group is named {name}"));
+    }
+    let message = name.as_ref().map_or_else(
+        || "Showing every agent group".to_owned(),
+        |name| format!("Showing agent group {name}"),
+    );
+    view.agent_group = name;
+    cx.notify();
+    Response::done(message)
 }
 
 pub(super) fn command(call: Call<CommandOp>, cx: &mut App) -> Response {

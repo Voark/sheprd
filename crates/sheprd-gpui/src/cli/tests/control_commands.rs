@@ -27,6 +27,10 @@ fn global_options_apply_anywhere_after_the_command() {
             window: Some(7),
         }
     );
+    assert_eq!(
+        command(&["window", "alerts"]),
+        ControlCommand::Window(WindowCommand::Alerts)
+    );
     // A bare family runs its listing.
     assert_eq!(
         command(&["tab"]),
@@ -255,6 +259,13 @@ fn the_orchestrator_repository_may_come_before_the_verb() {
         ControlCommand::Orchestrator(control::OrchestratorCommand::Items {
             repo: Some("/src/app".into()),
             items: control::Items::PullRequests,
+        })
+    );
+    assert_eq!(
+        command(&["orchestrator", "tasks"]),
+        ControlCommand::Orchestrator(control::OrchestratorCommand::Items {
+            repo: None,
+            items: control::Items::Tasks,
         })
     );
 }

@@ -128,6 +128,11 @@ pub enum Command {
     SetAutoAccept {
         on: bool,
     },
+    /// Ends one running sub-agent or background shell the agent marked
+    /// stoppable, leaving the turn and everything else running.
+    StopActivity {
+        call_id: String,
+    },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -196,6 +201,8 @@ pub enum Rejection {
     TurnRunning,
     #[error("the agent could not go back to that prompt")]
     RewindFailed,
+    #[error("that work has already ended or cannot be stopped")]
+    UnknownActivity,
     /// A command this program's version does not know, from a newer client.
     #[error("this chat program is older than Sheprd; start a new chat to use that")]
     Unsupported,
