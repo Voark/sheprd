@@ -766,21 +766,7 @@ impl Render for SheprdWindow {
                         .as_ref()
                         .is_some_and(|location| !location.is_page()) =>
                 {
-                    match tab.location {
-                        Some(crate::browser::Location::Code { .. }) => {
-                            self.render_code_tab(slot, &tab, cx)
-                        }
-                        Some(crate::browser::Location::Files { .. }) => {
-                            self.render_file_tree_tab(slot, &tab, cx)
-                        }
-                        Some(crate::browser::Location::Devices) => {
-                            self.render_devices_tab(slot, &tab, cx)
-                        }
-                        Some(crate::browser::Location::CoreTerminal { .. }) => {
-                            self.render_core_terminal_tab(slot, &tab, cx)
-                        }
-                        _ => self.render_review_tab(slot, &tab, cx),
-                    }
+                    self.render_app_tab(slot, &tab, cx)
                 }
                 (Shown::Page(_), Some(tab)) => self.render_browser(slot, &tab, owns_keyboard, cx),
                 (Shown::Elsewhere(tab), _) => match self.live_frame_of(tab, window_frame.clone()) {

@@ -6,6 +6,7 @@
 mod accessibility;
 mod annotate;
 mod announcement;
+mod app_tab;
 mod backdrop;
 pub(crate) mod chrome_focus;
 pub(crate) mod clipboard;
