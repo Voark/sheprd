@@ -81,6 +81,7 @@ impl SheprdWindow {
         } = appearance;
         // Effects run here in a fixed order, so the fields below can stay sorted.
         let configured_terminal_size = config.terminal.size;
+        let menu_bar_visible = config.show_menu_bar;
         let status_bar_visible = config.status_bar.show;
         let mut gui_config_diagnostic = crate::config_diagnostic::ConfigDiagnostic::default();
         gui_config_diagnostic.sync_own(config.diagnostic().as_deref());
@@ -94,6 +95,7 @@ impl SheprdWindow {
         let sidebar_invalidation = Self::invalidate_sidebar(cx);
         let host_theme = Self::observe_host_theme(cx);
         let browser = crate::browser::Browser::new(cx);
+        let core_terminals = crate::core_terminals::CoreTerminals::shared(cx);
         // Another window, or an agent, may open or close a tab.
         let browser_tabs = cx.observe_global::<crate::browser::Store>(|_, cx| cx.notify());
         let device_tags = crate::device_tags::DeviceTags::current(cx);
@@ -173,7 +175,7 @@ impl SheprdWindow {
             config_watch: None,
             configured_terminal_size,
             copy_mode: None,
-            core_terminals: Default::default(),
+            core_terminals,
             daemon_text: Default::default(),
             deliveries: Default::default(),
             device_drag: None,
@@ -231,6 +233,7 @@ impl SheprdWindow {
             marked: String::new(),
             marked_selection: None,
             menu,
+            menu_bar_visible,
             merged_cleanup: Default::default(),
             mod_panel_width: crate::panel_resize::MOD_PANEL,
             mods: Default::default(),

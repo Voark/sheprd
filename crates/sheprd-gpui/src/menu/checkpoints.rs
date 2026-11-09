@@ -17,7 +17,12 @@ impl SheprdWindow {
     pub(crate) fn checkpoint_checkout(&self) -> Option<Checkout> {
         let target = self.menu.target.as_ref()?;
         let endpoint = self.endpoints.get(self.selected_endpoint)?;
-        let host = host_for(&endpoint.connection.target, self.live.local_daemon_peer)?;
+        // A workspace the app keeps is in a folder on this computer.
+        let host = if target.keeper == sheprd_session::Keeper::App {
+            host_for(&sheprd_client::ConnectTarget::Local, true)?
+        } else {
+            host_for(&endpoint.connection.target, self.live.local_daemon_peer)?
+        };
         Checkout::new(
             host,
             &target.worktree.as_ref()?.key,
@@ -56,15 +61,7 @@ impl SheprdWindow {
 
     /// Whether an agent in `workspace` is mid-turn.
     pub(crate) fn workspace_agent_working(&self, workspace: &str) -> bool {
-        self.live.snapshot.as_ref().is_some_and(|snapshot| {
-            snapshot.agents.iter().any(|agent| {
-                agent.workspace_id == workspace
-                    && matches!(
-                        agent.agent_status,
-                        AgentStatus::Working | AgentStatus::Blocked
-                    )
-            })
-        })
+        agent_working(&self.sessions(self.selected_endpoint), workspace)
     }
 
     /// Says an agent may keep changing the files, with a glyph and in the
@@ -310,6 +307,14 @@ impl SheprdWindow {
             )
             .child(footer)
     }
+}
+
+/// Whether an agent of Herdr 1 or Herdr 2 in `workspace` is mid-turn.
+pub(super) fn agent_working(sessions: &crate::session_model::Sessions, workspace: &str) -> bool {
+    sessions.agents().any(|agent| {
+        agent.workspace == workspace
+            && matches!(agent.status, AgentStatus::Working | AgentStatus::Blocked)
+    })
 }
 
 #[cfg(test)]

@@ -51,13 +51,11 @@ impl SheprdWindow {
     pub(crate) fn focused_herdr_tab(&self) -> Option<&str> {
         let snapshot = self.live.snapshot.as_ref()?;
         let tab = snapshot.focused_tab_id.as_deref()?;
+        let workspace = self.herdr_workspace_in_front()?;
         snapshot
             .tabs
             .iter()
-            .any(|candidate| {
-                candidate.tab_id == tab
-                    && Some(&candidate.workspace_id) == snapshot.focused_workspace_id.as_ref()
-            })
+            .any(|candidate| candidate.tab_id == tab && candidate.workspace_id == workspace)
             .then_some(tab)
     }
 
@@ -329,17 +327,8 @@ impl SheprdWindow {
 
     /// Every tab of the focused workspace, hidden ones included.
     pub(crate) fn open_workspace_tabs(&self, cx: &App) -> Vec<Pick> {
-        let herdr = self.live.snapshot.as_ref().map(|snapshot| {
-            snapshot
-                .tabs
-                .iter()
-                .filter(|tab| Some(&tab.workspace_id) == snapshot.focused_workspace_id.as_ref())
-                .map(|tab| Pick::Herdr(tab.tab_id.clone()))
-                .collect::<Vec<_>>()
-        });
-        herdr
-            .unwrap_or_default()
-            .into_iter()
+        self.herdr_tabs_in_front()
+            .map(|tab| Pick::Herdr(tab.tab_id.clone()))
             .chain(self.browser_tab_ids(cx).into_iter().map(Pick::Page))
             .collect()
     }
@@ -514,6 +503,16 @@ impl SheprdWindow {
             // the tab, rather than flashing a stand-in for one round trip.
             Shown::Elsewhere(tab)
                 if Some(group) == self.primary_group() && !self.parked_focuses(tab) =>
+            {
+                Shown::Terminal
+            }
+            // With no Herdr 1 installed, no Herdr tab is ever focused: the
+            // group holding the window's connection shows the herdr-core
+            // shell standing in for it, split or not.
+            Shown::Empty
+                if self.live.missing_installation
+                    && Some(group) == self.primary_group()
+                    && self.group_pick(group).is_none() =>
             {
                 Shown::Terminal
             }

@@ -17,6 +17,7 @@ pub(super) struct Poller {
     boot: String,
     /// The document's version and its spaces, `None` when it has none.
     doc: Option<(u64, Option<spaces::Spaces>)>,
+    checkouts: super::checkouts::Checkouts,
     names: spaces::Names,
     saved: Option<(SystemTime, Option<SavedTabs>)>,
 }
@@ -60,10 +61,24 @@ impl Poller {
             self.refresh_saved(tabs);
         }
         let saved = self.saved.as_ref().and_then(|(_, saved)| saved.as_ref());
-        if let Some((_, Some(spaces))) = &self.doc {
-            return spaces.project(boot, terminals, saved, scope, &mut self.names);
-        }
-        projection::project(boot, terminals, saved, scope)
+        let mut layout = match &self.doc {
+            Some((_, Some(spaces))) => {
+                let mut layout = spaces.project(boot, terminals, saved, scope, &mut self.names);
+                projection::lead_kept(&mut layout, saved, scope);
+                layout
+            }
+            _ => projection::project(boot, terminals, saved, scope),
+        };
+        self.checkouts.fill(&mut layout, std::time::Instant::now());
+        layout
+    }
+
+    /// Whether Sheprd keeps workspace `id` for `scope` in its saved tabs.
+    pub(super) fn keeps(&self, scope: &str, id: &str) -> bool {
+        self.saved
+            .as_ref()
+            .and_then(|(_, saved)| saved.as_ref())
+            .is_some_and(|saved| saved.workspaces(scope).any(|workspace| workspace.id == id))
     }
 
     fn refresh_saved(&mut self, path: &Path) {

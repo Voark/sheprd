@@ -14,8 +14,20 @@ fn a_turn_start_carries_its_prompt_and_a_turn_end_does_not() {
     use AgentStatus::*;
     let mut checkpoints = Checkpoints::default();
     let known = |pane: &str| (pane == "p0").then(origin);
-    checkpoints.observe("local", &Host::Local, &with([Idle, Idle]), known);
-    checkpoints.observe("local", &Host::Local, &with([Working, Idle]), known);
+    observe_from(
+        &mut checkpoints,
+        "local",
+        &Host::Local,
+        &with([Idle, Idle]),
+        known,
+    );
+    observe_from(
+        &mut checkpoints,
+        "local",
+        &Host::Local,
+        &with([Working, Idle]),
+        known,
+    );
     assert_eq!(
         queued(&checkpoints),
         [(
@@ -26,7 +38,13 @@ fn a_turn_start_carries_its_prompt_and_a_turn_end_does_not() {
             }
         )]
     );
-    checkpoints.observe("local", &Host::Local, &with([Idle, Idle]), known);
+    observe_from(
+        &mut checkpoints,
+        "local",
+        &Host::Local,
+        &with([Idle, Idle]),
+        known,
+    );
     assert_eq!(
         queued(&checkpoints),
         [(

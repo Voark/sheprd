@@ -62,8 +62,27 @@ impl SheprdWindow {
             return;
         }
         if let Action::Native(command) = action {
+            let core_view = self
+                .menu
+                .palette
+                .as_mut()
+                .and_then(|palette| palette.core_view.take());
             self.dismiss_menu(window, cx);
+            // The menu hands the keyboard to the window; a herdr-core pane
+            // takes it back so the command is that pane's.
+            if let Some(view) = core_view.filter(|view| self.core_terminals.shows(view)) {
+                window.focus(&view.read(cx).focus_handle().clone(), cx);
+            }
             self.command(command, window, cx);
+            return;
+        }
+        if let Action::Core { tab, terminal } = &action {
+            remember(cx);
+            self.dismiss_menu(window, cx);
+            match terminal {
+                Some(terminal) => self.show_core_pane(*tab, terminal, window, cx),
+                None => self.show_browser_tab(*tab, window, cx),
+            }
             return;
         }
         if let Action::Mod { name, id } = action {
@@ -137,6 +156,7 @@ impl SheprdWindow {
                 | Action::Project(_)
                 | Action::NewProject(_)
                 | Action::Note { .. }
+                | Action::Core { .. }
                 | Action::Mod { .. } => unreachable!(),
             }
         })();
@@ -208,6 +228,18 @@ impl SheprdWindow {
             .position(|e| e.id == endpoint && e.enabled)
             .ok_or(Error::HostUnavailable)?;
         let selected = index == self.selected_endpoint;
+        // A workspace the app keeps answers for itself.
+        if let NavigationTarget::Workspace(id) = target
+            && boot.is_empty()
+        {
+            let kept = self
+                .sessions(index)
+                .core
+                .is_some_and(|core| core.workspace(id).is_some());
+            return kept
+                .then_some(selected)
+                .ok_or(Error::WorkspaceRemoved.into());
+        }
         let live = if selected {
             &self.live
         } else {
