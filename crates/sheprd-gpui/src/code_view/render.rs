@@ -14,14 +14,22 @@ const OUTLINE_WIDTH: f32 = 240.;
 /// Below this width the outline stays hidden whatever its toggle says.
 const OUTLINE_MIN_TAB_WIDTH: f32 = 640.;
 
+/// Whether a tab `width` wide has room for the outline as well as the code
+/// and a blame column whose text asks for `blame`, so the two together
+/// never squeeze the code out.
+pub(super) fn outline_fits(width: f32, blame: Option<f32>) -> bool {
+    let blame = blame.map_or(0., |wide| super::blame::column_width(wide, width));
+    width >= OUTLINE_MIN_TAB_WIDTH + blame
+}
+
 /// Records a tab's width as it lays out, and draws again when that moves it
 /// across the outline's threshold, so the outline follows on the next frame.
-fn measure(width: Rc<Cell<f32>>) -> impl IntoElement {
+fn measure(width: Rc<Cell<f32>>, blame: Option<f32>) -> impl IntoElement {
     canvas(
         move |bounds, window, _| {
             let now = f32::from(bounds.size.width);
             let before = width.replace(now);
-            if (before >= OUTLINE_MIN_TAB_WIDTH) != (now >= OUTLINE_MIN_TAB_WIDTH) {
+            if outline_fits(before, blame) != outline_fits(now, blame) {
                 window.refresh();
             }
         },
@@ -246,7 +254,7 @@ impl SheprdWindow {
                 let gutter = (digits as f32 + 2.) * self.config.terminal.size * 0.62;
                 let outline = view.outline
                     && !text.outline.is_empty()
-                    && view.width.get() >= OUTLINE_MIN_TAB_WIDTH;
+                    && outline_fits(view.width.get(), self.code_blame_wide(view));
                 div()
                     .flex_1()
                     .min_h_0()
@@ -287,7 +295,7 @@ impl SheprdWindow {
             .size_full()
             .flex()
             .flex_col()
-            .child(measure(view.width.clone()))
+            .child(measure(view.width.clone(), self.code_blame_wide(view)))
             .child(self.code_header(id, tab, view, cx))
             .child(body)
             .children(self.code_blame_bar(view))

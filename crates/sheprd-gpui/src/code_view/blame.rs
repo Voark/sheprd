@@ -26,6 +26,13 @@ use std::{
 const COLUMN_CHARS: f32 = 36.;
 const MAX_COLUMN_SHARE: f32 = 0.4;
 
+/// The blame column's width in a tab `width` wide, its text asking for
+/// `wide`: no more than its share, once the tab has been measured.
+pub(super) fn column_width(wide: f32, width: f32) -> f32 {
+    let room = width * MAX_COLUMN_SHARE;
+    if room > 0. { wide.min(room) } else { wide }
+}
+
 /// What a tab knows of its lines' commits. Blame stays shown while it is
 /// read again.
 pub(super) enum Lines {
@@ -148,10 +155,13 @@ impl SheprdWindow {
 
     /// How wide the blame column draws, when it shows.
     pub(super) fn code_blame_width(&self, view: &CodeView) -> Option<f32> {
+        Some(column_width(self.code_blame_wide(view)?, view.width.get()))
+    }
+
+    /// The width the blame column's text asks for, when it is shown.
+    pub(super) fn code_blame_wide(&self, view: &CodeView) -> Option<f32> {
         view.blame.shown()?;
-        let wide = COLUMN_CHARS * self.config.terminal.size * 0.62;
-        let room = view.width.get() * MAX_COLUMN_SHARE;
-        Some(if room > 0. { wide.min(room) } else { wide })
+        Some(COLUMN_CHARS * self.config.terminal.size * 0.62)
     }
 
     /// Line `row`'s place in the blame column: the commit where a run of

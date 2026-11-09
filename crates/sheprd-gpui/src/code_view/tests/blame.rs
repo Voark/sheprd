@@ -155,3 +155,15 @@ fn a_file_git_does_not_track_says_why_and_turns_blame_off(cx: &mut TestAppContex
         );
     });
 }
+
+#[test]
+fn the_outline_gives_way_when_blame_would_squeeze_the_code() {
+    use crate::code_view::render::outline_fits;
+    // A tab just over the outline's own minimum keeps it without blame.
+    assert!(outline_fits(700., None));
+    // With a blame column asking for 290 px, the same tab has no room.
+    assert!(!outline_fits(700., Some(290.)));
+    assert!(!outline_fits(920., Some(290.)));
+    // A wide tab holds the outline, the blame column, and the code.
+    assert!(outline_fits(1000., Some(290.)));
+}
