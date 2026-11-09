@@ -33,6 +33,11 @@ const PROGRAM: &str = if cfg!(windows) {
 } else {
     "herdr-acp"
 };
+/// Lets the chat switch to another installed agent until its first prompt.
+/// Only the program this app ships or found here is asked: one already on
+/// an SSH host may be older and refuse the option, so remote chats keep
+/// the agent they start with.
+pub(crate) const CHOOSE: &str = "--choose";
 /// How long a start may wait for the daemon to make its tab.
 const DEADLINE: Duration = Duration::from_secs(15);
 
@@ -105,9 +110,9 @@ pub(crate) fn locate_in(exe: Option<&Path>, path: Option<&std::ffi::OsStr>) -> O
 /// agent that failed to start leaves its message on screen.
 pub(crate) fn command_line(agent: Agent) -> String {
     if cfg!(windows) {
-        format!("& $env:{PROGRAM_ENV} {agent}")
+        format!("& $env:{PROGRAM_ENV} {CHOOSE} {agent}")
     } else {
-        format!(" sh -c 'exec \"${PROGRAM_ENV}\" {agent}'")
+        format!(" sh -c 'exec \"${PROGRAM_ENV}\" {CHOOSE} {agent}'")
     }
 }
 

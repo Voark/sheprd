@@ -84,6 +84,8 @@ pub(crate) fn connect(
 /// The menu open over a chat's header.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum Menu {
+    /// The agents the chat may still switch to.
+    Agent,
     /// The agent's older list of session modes.
     Modes,
     /// The choices of one setting, by id.

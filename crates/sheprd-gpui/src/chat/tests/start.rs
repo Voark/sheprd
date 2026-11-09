@@ -81,10 +81,13 @@ fn the_typed_line_names_only_the_agent() {
     if cfg!(unix) {
         assert_eq!(
             command_line(Agent::Claude),
-            r#" sh -c 'exec "$HERDR_ACP" claude'"#
+            r#" sh -c 'exec "$HERDR_ACP" --choose claude'"#
         );
     } else {
-        assert_eq!(command_line(Agent::Claude), "& $env:HERDR_ACP claude");
+        assert_eq!(
+            command_line(Agent::Claude),
+            "& $env:HERDR_ACP --choose claude"
+        );
     }
 }
 
@@ -153,6 +156,8 @@ fn a_remote_line_finds_the_hosts_own_program() {
     assert!(line.ends_with("exit 127'"));
     assert!(line.contains("$HOME/.herdr/bin/herdr-acp"));
     assert!(line.contains("exec \"$p\" opencode"));
+    // The host's program may predate switching agents.
+    assert!(!line.contains("--choose"));
     // Wrapped in single quotes, so the script must hold none of its own.
     assert_eq!(line.matches('\'').count(), 2);
 }

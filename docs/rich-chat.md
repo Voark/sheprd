@@ -61,6 +61,22 @@ The Terminal layout still renders chat. The terminal button and
 `sheprd chat show` restores the chat view. These commands change presentation
 without starting or stopping the agent. See the [CLI guide](cli.md#existing-agent-rendering).
 
+## Choosing the agent
+
+The tab strip's **Agent** button (`[chat] launcher = "agent"`, the default)
+starts a chat with the agent you used last. Until you send the first prompt,
+the composer's first button names that agent and opens a menu of the others
+installed on the same machine. Picking one stops the running agent and
+starts the chosen one in the same folder: the conversation starts over empty,
+and anything you typed while the first agent was still starting waits for
+the new one. Once a prompt reaches the agent, the button goes away, because
+the conversation now lives in that agent. The in-pane view offers the same
+choice as the first row of **Ctrl+O**.
+
+Chats on an SSH host keep the agent they start with, because the host's own
+`sheprd-acp` may predate switching. The other launcher placements put a
+button per agent in the strip instead, and those chats can switch too.
+
 ## Chats in Herdr 2 panes
 
 In a Herdr 2 (herdr-core) tab, starting a chat from the tab strip's launcher

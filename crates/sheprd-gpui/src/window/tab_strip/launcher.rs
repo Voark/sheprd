@@ -1,7 +1,9 @@
 //! A tab strip's agent buttons: one click starts a chat with that agent in a
 //! new tab of the strip's group. `[chat] launcher` places them; the strip's
 //! "+" opens a terminal tab in every placement. Only agents installed on
-//! the selected host show, and none while no chat can start there.
+//! the selected host show, and none while no chat can start there. The
+//! default is one Agent button, whose chat offers the other agents in its
+//! composer until its first prompt.
 
 use super::SheprdWindow;
 use crate::i18n::fl;
@@ -99,6 +101,20 @@ impl SheprdWindow {
                 .children(self.agent_buttons(slot, &agents, cx))
                 .into_any_element(),
             ChatLauncher::Plus => self.plus_deck(slot, plus, &agents, window, cx),
+            ChatLauncher::Agent => {
+                let agent = self.default_chat_agent(&agents);
+                let layout = self.tab_layout();
+                let mark = AgentIcon::Generic.element(ICON, self.theme.foreground);
+                let label = SharedString::from(fl!("tab-strip-new-agent-chat"));
+                self.launcher_group(slot, "chat-launcher-agent")
+                    .child(plus)
+                    .child(layout.new_tab(
+                        self.launch_button(slot, agent, "chat-launch-agent", label, cx),
+                        mark,
+                        &self.theme,
+                    ))
+                    .into_any_element()
+            }
             ChatLauncher::Leading
             | ChatLauncher::Trailing
             | ChatLauncher::Button
@@ -166,11 +182,34 @@ impl SheprdWindow {
         AgentIcon::from_identity(Some(agent.name())).element(ICON, self.theme.foreground)
     }
 
+    /// The agent a launcher that names none starts: the one last started,
+    /// while it is still installed, else the first installed.
+    fn default_chat_agent(&self, agents: &[Agent]) -> Agent {
+        self.chats
+            .last_started
+            .filter(|agent| agents.contains(agent))
+            .unwrap_or(agents[0])
+    }
+
     /// The button that starts a chat with `agent`: its identity, tooltip,
     /// and click, for the caller to shape and fill.
     fn agent_button(&self, slot: Slot, agent: Agent, cx: &mut Context<Self>) -> Stateful<Div> {
         let selector = format!("chat-launch-{}", agent.name());
         let label = SharedString::from(fl!("tab-strip-new-chat", agent = agent.display_name()));
+        self.launch_button(slot, agent, &selector, label, cx)
+    }
+
+    /// A button named `selector` and labelled `label` that starts a chat
+    /// with `agent` in `slot`'s group.
+    fn launch_button(
+        &self,
+        slot: Slot,
+        agent: Agent,
+        selector: &str,
+        label: SharedString,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
+        let selector = selector.to_owned();
         let (foreground, surface) = (self.theme.foreground, self.theme.surface);
         div()
             .id(SharedString::from(slot.selector(&selector)))
@@ -196,11 +235,7 @@ impl SheprdWindow {
     /// One button, named, for the agent last started (else the first), with
     /// the others sliding out before it while the pointer is over it.
     fn launcher_button(&self, slot: Slot, agents: &[Agent], cx: &mut Context<Self>) -> AnyElement {
-        let first = self
-            .chats
-            .last_started
-            .filter(|agent| agents.contains(agent))
-            .unwrap_or(agents[0]);
+        let first = self.default_chat_agent(agents);
         let others: Vec<Agent> = agents
             .iter()
             .copied()

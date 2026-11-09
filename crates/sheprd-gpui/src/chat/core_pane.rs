@@ -87,7 +87,11 @@ pub(super) fn spawn(
     // not report itself there.
     env.push((PANE_ENV.to_owned(), String::new()));
     Spawn {
-        argv: vec![program.to_string_lossy().into_owned(), agent.to_string()],
+        argv: vec![
+            program.to_string_lossy().into_owned(),
+            super::start::CHOOSE.to_owned(),
+            agent.to_string(),
+        ],
         env,
         labels: BTreeMap::from([(TOKEN.to_owned(), endpoint.to_string())]),
         // herdr-core names are unique handles, so two chats with one agent

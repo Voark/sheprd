@@ -107,7 +107,8 @@ fn a_chat_terminal_runs_the_program_with_its_endpoint_and_label() {
         (PANE_ENV.to_owned(), "w1:p1".to_owned()),
     ]);
     let spawn = spawn(Agent::Codex, Path::new("/opt/herdr-acp"), &endpoint, &extra);
-    assert_eq!(spawn.argv, ["/opt/herdr-acp", "codex"]);
+    // The program comes with this app, so the chat may switch agents.
+    assert_eq!(spawn.argv, ["/opt/herdr-acp", "--choose", "codex"]);
     assert_eq!(
         spawn.env,
         [

@@ -14,6 +14,8 @@ use sheprd_chat_protocol::{
     display,
 };
 
+mod agent;
+
 /// The settings the header shows a button for, in order.
 const AT_HAND: [OptionCategory; 3] = [
     OptionCategory::Model,
@@ -193,7 +195,7 @@ impl SheprdWindow {
                     matches!(&option.kind, OptionKind::Select { choices, .. }
                         if choices.len() > SEARCHABLE)
                 }),
-            Menu::Modes | Menu::Settings => false,
+            Menu::Agent | Menu::Modes | Menu::Settings => false,
         };
         pane.menu = opening.then_some(menu);
         let search = (opening && long).then(|| {
@@ -349,8 +351,9 @@ impl SheprdWindow {
             }))
     }
 
-    /// The composer's setting buttons: one per setting at hand, the agent's
-    /// older modes when it has no mode setting, then one for the rest.
+    /// The composer's setting buttons: the agent while the chat may still
+    /// switch, one per setting at hand, the agent's older modes when it has
+    /// no mode setting, then one for the rest.
     pub(super) fn render_chat_settings_buttons(
         &self,
         chat: &ChatPane,
@@ -366,7 +369,10 @@ impl SheprdWindow {
                 .size(px(10.))
                 .text_color(rgb(theme.subtext()))
         };
-        let mut buttons = Vec::new();
+        let mut buttons: Vec<_> = self
+            .render_chat_agent_button(chat, cx)
+            .into_iter()
+            .collect();
         for category in AT_HAND {
             let Some(option) = transcript.option(category) else {
                 continue;
@@ -579,6 +585,7 @@ impl SheprdWindow {
         };
         let mut rows: Vec<AnyElement> = Vec::new();
         match menu {
+            Menu::Agent => rows.extend(self.chat_agent_rows(chat, row, cx)),
             Menu::Modes => {
                 let Some(modes) = &transcript.modes else {
                     return div().into_any_element();
