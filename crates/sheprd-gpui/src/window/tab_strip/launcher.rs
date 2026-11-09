@@ -131,8 +131,10 @@ impl SheprdWindow {
                     ),
                     None => fl!("tab-strip-new-agent-chat"),
                 });
+                // The mark of the agent it starts, which usage may change;
+                // a generic mark would read as another terminal button.
                 let layout = self.tab_layout();
-                let mark = AgentIcon::Generic.element(ICON, self.theme.foreground);
+                let mark = self.agent_mark(pick.chosen);
                 let button = self.launch_button(
                     slot,
                     (pick.chosen, Launch::Suggested),

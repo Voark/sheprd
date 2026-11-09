@@ -18,6 +18,12 @@ pub(super) fn offered(transcript: &Transcript) -> Option<(&[Agent], Option<Agent
     (harnesses.available.len() > 1).then_some((harnesses.available.as_slice(), harnesses.current))
 }
 
+/// `agent`'s mark, found by its name as on the command line: the transcript
+/// carries the display name, which names no mark.
+fn mark(agent: Option<Agent>) -> AgentIcon {
+    AgentIcon::from_identity(agent.map(Agent::name))
+}
+
 impl SheprdWindow {
     /// The button that opens the agent menu, while the chat offers one.
     pub(super) fn render_chat_agent_button(
@@ -26,16 +32,13 @@ impl SheprdWindow {
         cx: &mut Context<Self>,
     ) -> Option<Stateful<Div>> {
         let transcript = chat.session.transcript();
-        offered(transcript)?;
+        let (_, current) = offered(transcript)?;
         let name = transcript.agent.clone();
         let pane = chat.target.pane_id.clone();
         Some(
             self.chat_header_button("chat-agent-picker".into())
                 .tooltip(self.chat_setting_hint(&fl!("chat-settings-agent"), &name))
-                .child(
-                    AgentIcon::from_identity(Some(chat.session.agent()))
-                        .element(MARK, self.theme.foreground),
-                )
+                .child(mark(current).element(MARK, self.theme.foreground))
                 .child(
                     div()
                         .max_w(px(160.))
@@ -78,10 +81,7 @@ impl SheprdWindow {
                             .flex()
                             .items_center()
                             .gap(px(8.))
-                            .child(
-                                AgentIcon::from_identity(Some(agent.name()))
-                                    .element(MARK, self.theme.foreground),
-                            )
+                            .child(mark(Some(agent)).element(MARK, self.theme.foreground))
                             .child(agent.display_name()),
                     )
                     .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
@@ -163,3 +163,6 @@ impl SheprdWindow {
         self.chat_send(pane_id, Command::SetAgent { agent }, cx);
     }
 }
+
+#[cfg(test)]
+mod tests;
