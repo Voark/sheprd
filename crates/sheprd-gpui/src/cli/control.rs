@@ -90,6 +90,8 @@ pub enum ControlCommand {
     Ports(PortsCommand),
     Processes {
         pane: Option<String>,
+        /// A herdr-core terminal, by its address such as `t7`.
+        terminal: Option<String>,
     },
     Usage,
     /// The agent a new chat would start with by plan usage.
@@ -374,6 +376,7 @@ fn command(family: &'static str, args: &mut Args) -> Result<ControlCommand, CliE
         "ports" => ControlCommand::Ports(hosts::ports(args)?),
         "processes" => ControlCommand::Processes {
             pane: args.text_option("--pane")?,
+            terminal: args.text_option("--terminal")?,
         },
         "usage" => match args.verb() {
             None => ControlCommand::Usage,
