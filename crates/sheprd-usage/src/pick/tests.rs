@@ -4,7 +4,7 @@ use std::time::{Duration, SystemTime};
 
 use super::*;
 use crate::{
-    model::{Account, Kind, SESSION, Window},
+    model::{Account, Kind, SESSION, WEEK, Window},
     registry,
 };
 
@@ -26,6 +26,20 @@ fn session(used: f64, left: Duration) -> Report {
             Some(now() + left),
             Some(SESSION),
         )],
+    )
+}
+
+/// A report with `windows`, each `(kind, used, resets in, length)`.
+fn windows(windows: &[(Kind, f64, Duration, Duration)]) -> Report {
+    Report::new(
+        registry::find("claude").unwrap(),
+        Account::default(),
+        windows
+            .iter()
+            .map(|(kind, used, left, length)| {
+                Window::new(kind.clone(), *used, Some(now() + *left), Some(*length))
+            })
+            .collect(),
     )
 }
 
@@ -158,4 +172,43 @@ fn without_a_preference_room_alone_decides() {
     // An agent no longer installed is no preference.
     assert_eq!(pick(&candidates, Some("gemini")).unwrap().chosen, "codex");
     assert_eq!(pick::<&str>(&[], Some("claude")), None);
+}
+
+#[test]
+fn a_running_out_window_counts_though_another_is_fuller() {
+    // The session is 70% used with an hour left: on pace to last. The week
+    // is 60% used a day in: gone well before it resets.
+    let report = windows(&[
+        (Kind::Session, 70., hours(1), SESSION),
+        (Kind::Weekly, 60., hours(6 * 24), WEEK),
+    ]);
+    let room = Room::of(Some(&report), now());
+    assert!(
+        matches!(room, Room::Tight { used, runs_out: Some(_), .. } if used == 60.),
+        "{room:?}"
+    );
+}
+
+#[test]
+fn a_window_past_its_reset_says_nothing() {
+    let spent_yesterday = Report::new(
+        registry::find("claude").unwrap(),
+        Account::default(),
+        vec![Window::new(
+            Kind::Session,
+            100.,
+            Some(now() - hours(1)),
+            Some(SESSION),
+        )],
+    );
+    assert_eq!(Room::of(Some(&spent_yesterday), now()), Room::Unknown);
+    // Another window still in force decides alone.
+    let mut report = spent_yesterday;
+    report.windows.push(Window::new(
+        Kind::Weekly,
+        20.,
+        Some(now() + hours(48)),
+        Some(WEEK),
+    ));
+    assert_eq!(Room::of(Some(&report), now()), Room::Ample { used: 20. });
 }

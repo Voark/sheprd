@@ -9,7 +9,7 @@
 
 use std::time::{Duration, SystemTime};
 
-use crate::model::Report;
+use crate::model::{Report, Window};
 
 /// The share of a window past which a plan counts as tight.
 const TIGHT: f32 = 80.;
@@ -36,24 +36,42 @@ pub enum Room {
 }
 
 impl Room {
-    /// The room `report` shows at `now`; `None` reads as unknown.
+    /// The room `report` shows at `now`: the shortest of its windows, each
+    /// judged on its own, since a weekly window can be running out while
+    /// a fuller session window is not. `None`, or a report whose windows
+    /// all passed their reset, reads as unknown.
     pub fn of(report: Option<&Report>, now: SystemTime) -> Self {
-        let Some(window) = report.and_then(Report::tightest) else {
-            return Self::Unknown;
-        };
+        report
+            .into_iter()
+            .flat_map(|report| report.windows.iter())
+            .filter_map(|window| Self::window(window, now))
+            .max_by(|a, b| {
+                let (a, b) = (a.rank(), b.rank());
+                a.0.cmp(&b.0).then(a.1.total_cmp(&b.1))
+            })
+            .unwrap_or(Self::Unknown)
+    }
+
+    /// One window's room, or `None` once its reset has passed: a refresh
+    /// that failed keeps the last reading, which no longer says anything
+    /// about the window that began since.
+    fn window(window: &Window, now: SystemTime) -> Option<Self> {
+        if window.resets_at.is_some_and(|at| at <= now) {
+            return None;
+        }
         let resets_in = window.resets_in(now);
         if window.used >= 100. {
-            return Self::Spent { resets_in };
+            return Some(Self::Spent { resets_in });
         }
         let runs_out = window.pace(now).and_then(|pace| pace.runs_out);
         if window.used >= TIGHT || (runs_out.is_some() && window.used >= RUNNING_OUT) {
-            return Self::Tight {
+            return Some(Self::Tight {
                 used: window.used,
                 resets_in,
                 runs_out,
-            };
+            });
         }
-        Self::Ample { used: window.used }
+        Some(Self::Ample { used: window.used })
     }
 
     /// Whether the preferred agent should give way to another.
