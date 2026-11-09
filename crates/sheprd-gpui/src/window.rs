@@ -4,6 +4,7 @@
 //! because every one of them describes this window's own presentation state.
 
 mod accessibility;
+mod agent_skill_offer;
 mod annotate;
 mod announcement;
 mod backdrop;
