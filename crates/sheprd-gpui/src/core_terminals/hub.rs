@@ -50,8 +50,9 @@ type Join = Arc<dyn Fn(Start) -> Result<CoreBackend, Error> + Send + Sync>;
 pub(crate) struct Hub {
     /// What the attempt in flight may do.
     attempt: Option<Start>,
-    /// How many attempts it made, for tests that count dials.
-    #[cfg(test)]
+    /// How many attempts it made, for tests that count dials: the Unix
+    /// lifecycle fixtures, the only ones that do.
+    #[cfg(all(test, unix))]
     dials: usize,
     /// When the last attempt failed.
     failed: Option<Instant>,
@@ -76,7 +77,7 @@ impl Hub {
     ) -> Self {
         Self {
             attempt: None,
-            #[cfg(test)]
+            #[cfg(all(test, unix))]
             dials: 0,
             failed: None,
             join: Arc::new(join),
@@ -96,7 +97,7 @@ impl Hub {
     }
 
     /// How many attempts it made.
-    #[cfg(test)]
+    #[cfg(all(test, unix))]
     pub(crate) fn dials(&self) -> usize {
         self.dials
     }
@@ -133,7 +134,7 @@ impl Hub {
             State::Idle | State::Unavailable(_) => {}
         }
         self.attempt = Some(start);
-        #[cfg(test)]
+        #[cfg(all(test, unix))]
         {
             self.dials += 1;
         }
