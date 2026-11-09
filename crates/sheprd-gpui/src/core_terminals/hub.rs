@@ -95,8 +95,8 @@ impl Hub {
         }
     }
 
-    /// How many attempts it made.
-    #[cfg(test)]
+    /// How many attempts it made. Only the Unix lifecycle tests ask.
+    #[cfg(all(test, unix))]
     pub(crate) fn dials(&self) -> usize {
         self.dials
     }
