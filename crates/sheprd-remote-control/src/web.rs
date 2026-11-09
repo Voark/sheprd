@@ -35,7 +35,7 @@ pub(crate) use pace::Typed;
 pub(crate) use render::now_ms;
 pub(crate) use stream::Connected;
 pub(crate) use tags::Tags;
-pub(crate) use terminal::read_screen;
+pub(crate) use terminal::read_scrolled;
 pub(crate) use uploads::Uploads;
 
 use crate::control::DeviceId;
@@ -470,7 +470,6 @@ impl IntoResponse for ApiError {
             }
             Self::Hub(crate::hub::Error::Convert(
                 crate::hub::ConvertError::AlreadyConverting
-                | crate::hub::ConvertError::Core
                 | crate::hub::ConvertError::Platform
                 | crate::hub::ConvertError::Refused(_),
             )) => StatusCode::CONFLICT,

@@ -38,6 +38,35 @@ pub(super) fn destination_exists(
     }
 }
 
+/// The Go To rows of the workspaces the app keeps for Herdr 2 on a host.
+/// They have no daemon boot to check against, so they carry none.
+pub(super) fn kept_go_to_entries(
+    endpoint: &str,
+    host: Option<&str>,
+    session: &sheprd_session::Session,
+    entries: &mut Vec<Entry>,
+) {
+    for workspace in &session.workspaces {
+        let detail = [host, Some(workspace.cwd.as_str())]
+            .into_iter()
+            .flatten()
+            .filter(|text| !text.is_empty())
+            .collect::<Vec<_>>()
+            .join("  ");
+        entries.push(Entry::new(
+            workspace.label.clone(),
+            detail,
+            fl!("palette-go-to-workspace"),
+            Action::Go {
+                endpoint: endpoint.to_owned(),
+                boot: String::new(),
+                target: NavigationTarget::Workspace(workspace.id.clone()),
+            },
+            None,
+        ));
+    }
+}
+
 /// An agent's status word, searched for in English whatever the language.
 fn status_keyword(status: AgentStatus) -> &'static str {
     match status {
@@ -216,6 +245,91 @@ pub(super) fn go_to_entries(
             }
         }
     }
+}
+
+impl crate::SheprdWindow {
+    /// Go To rows for the focused workspace's Herdr 2 tabs and panes, as
+    /// Herdr's are listed: a tab row when there is a choice of tabs or the
+    /// user named it, then its panes, named as their chrome names them, with
+    /// their agent's status when one runs.
+    pub(super) fn core_palette_entries(&self, cx: &gpui::App) -> Vec<Entry> {
+        let store = cx.try_global::<crate::browser::Store>();
+        let panes = self.listed_core_panes(cx);
+        let mut tabs: Vec<crate::browser::TabId> = panes.iter().map(|(tab, _)| *tab).collect();
+        tabs.dedup();
+        let keywords = |status| [status_keyword(status), "herdr-core", "Herdr 2"].join(" "); // i18n: data
+        let mut entries: Vec<Entry> = Vec::new();
+        for tab in tabs {
+            let tab_label = store
+                .and_then(|store| store.get(tab))
+                .map(crate::browser::Tab::label)
+                .unwrap_or_default();
+            let named = self.core_terminals.tab_named(tab);
+            let parent = (tabs_choice(&panes) || named).then(|| {
+                entries.push(Entry::with_keywords(
+                    tab_label.clone(),
+                    String::new(),
+                    fl!("palette-go-to-tab"),
+                    Action::Core {
+                        tab,
+                        terminal: None,
+                    },
+                    None,
+                    &keywords(AgentStatus::Unknown),
+                ));
+                entries.len() - 1
+            });
+            for (_, terminal) in panes.iter().filter(|(shown, _)| *shown == tab) {
+                let (label, status) = self.core_pane_label(tab, terminal, cx);
+                let detail = [tab_label.as_str(), terminal.as_str()]
+                    .into_iter()
+                    .filter(|text| !text.is_empty() && *text != label)
+                    .collect::<Vec<_>>()
+                    .join("  ");
+                let badge = match status {
+                    AgentStatus::Unknown => fl!("palette-go-to-terminal"),
+                    status => status_badge(status),
+                };
+                let mut entry = Entry::with_keywords(
+                    label,
+                    detail,
+                    badge,
+                    Action::Core {
+                        tab,
+                        terminal: Some(terminal.clone()),
+                    },
+                    parent,
+                    &keywords(status),
+                );
+                entry.status = (status != AgentStatus::Unknown).then_some(status);
+                entries.push(entry);
+            }
+        }
+        entries
+    }
+}
+
+/// What the Herdr 2 rows show, to tell an open palette when a name,
+/// layout, or agent's status changed under it.
+pub(super) type CoreRow = (
+    SharedString,
+    SharedString,
+    SharedString,
+    Option<AgentStatus>,
+);
+
+pub(super) fn core_rows(entries: &[Entry]) -> Vec<CoreRow> {
+    (entries.iter())
+        .map(|entry| {
+            let (label, detail, badge) = (&entry.label, &entry.detail, &entry.badge);
+            (label.clone(), detail.clone(), badge.clone(), entry.status)
+        })
+        .collect()
+}
+
+/// Whether the panes listed lie in more than one tab, so a tab is a choice.
+fn tabs_choice(panes: &[(crate::browser::TabId, sheprd_backend::TerminalId)]) -> bool {
+    panes.windows(2).any(|pair| pair[0].0 != pair[1].0)
 }
 
 /// A row for each open workspace whose checkout has a note, most recently

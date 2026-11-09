@@ -29,8 +29,8 @@ pub(super) fn short(name: &str) -> &str {
         .unwrap_or(name)
 }
 
-/// What a log gave as an id, when it can be matched exactly later: a number
-/// or a short string, as session and cell ids are.
+/// What a log gave as an id, such as a session or cell, when it can be
+/// matched exactly later: a number or a short string.
 pub(super) fn identifier(value: Option<&Value>) -> Option<String> {
     let value = value?;
     if let Some(id) = value.as_u64() {

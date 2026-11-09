@@ -11,9 +11,11 @@
 mod ahead;
 mod commit;
 mod error;
+mod identity;
 
 pub use ahead::Ahead;
 pub use error::Error;
+pub use identity::{Identity, identity};
 use secrecy::SecretString;
 use sheprd_github::{
     Tokens,

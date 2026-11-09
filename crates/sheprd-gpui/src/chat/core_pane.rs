@@ -32,6 +32,11 @@ pub(crate) fn key(terminal: &TerminalId) -> String {
     format!("core:{terminal}")
 }
 
+/// The herdr-core terminal a [`key`] names, if it is one.
+pub(crate) fn terminal_of(key: &str) -> Option<TerminalId> {
+    TerminalId::new(key.strip_prefix("core:")?).ok()
+}
+
 /// The chats among `terminals`, in their order, one per terminal and at
 /// most [`MAX_CHATS`]. A terminal on another machine this core added
 /// (`box/t7`) runs its program there, out of reach.
@@ -41,7 +46,7 @@ pub(super) fn targets<'a>(terminals: impl IntoIterator<Item = &'a TerminalInfo>)
         .into_iter()
         .filter(|info| !info.id.as_str().contains('/'))
         .filter_map(|info| {
-            let endpoint: EndpointId = info.labels.get(TOKEN)?.parse().ok()?;
+            let endpoint = sheprd_core_client::convert::chat_endpoint(info)?;
             Some(Target {
                 endpoint,
                 existing: None,
@@ -108,6 +113,7 @@ impl SheprdWindow {
         &mut self,
         agent: Agent,
         tab: TabId,
+        cx: &gpui::App,
     ) -> Result<(), super::StartError> {
         if !self.config.features.acp_chats {
             return Err(super::StartError::Disabled);
@@ -134,8 +140,43 @@ impl SheprdWindow {
                 axis: crate::core_terminals::panes::Axis::Row,
             },
             spawn,
+            cx,
         );
         Ok(())
+    }
+
+    /// `view`, opening its pane's menu on a right-click the program does not
+    /// take, as a Herdr pane does.
+    fn core_pane_menu_area(
+        &self,
+        tab: TabId,
+        terminal: &TerminalId,
+        view: gpui::Entity<CoreTerminalView>,
+        cx: &mut gpui::Context<Self>,
+    ) -> gpui::AnyElement {
+        use gpui::{InteractiveElement as _, IntoElement as _, ParentElement as _, Styled as _};
+        let terminal = terminal.clone();
+        gpui::div()
+            .flex()
+            .flex_1()
+            .min_w_0()
+            .min_h_0()
+            .size_full()
+            .child(view)
+            .on_mouse_down(
+                gpui::MouseButton::Right,
+                cx.listener(move |this, event: &gpui::MouseDownEvent, window, cx| {
+                    cx.stop_propagation();
+                    let target = crate::core_terminals::menu::Target::Pane {
+                        tab,
+                        terminal: terminal.clone(),
+                    };
+                    this.open_core_menu(target, event.position, window, cx);
+                    this.menu.opening_right_click =
+                        this.menu.page == Some(crate::menu::Page::CoreMenu);
+                }),
+            )
+            .into_any_element()
     }
 
     /// `terminal`'s pane in `tab`: its view, with its chat drawn over it when
@@ -157,7 +198,7 @@ impl SheprdWindow {
             .flatten()
             .filter(|chat| chat.available());
         let Some(chat) = chat else {
-            return view.clone().into_any_element();
+            return self.core_pane_menu_area(tab, terminal, view.clone(), cx);
         };
         // The cells' last size shapes the chat's rail; it covers the pane.
         let size = view
@@ -177,7 +218,8 @@ impl SheprdWindow {
             .min_w_0()
             .min_h_0()
             .size_full()
-            .child(view.clone())
+            // Turned to its terminal, the pane still opens its menu there.
+            .child(self.core_pane_menu_area(tab, terminal, view.clone(), cx))
             .child(overlay)
             .into_any_element()
     }

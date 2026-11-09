@@ -3,37 +3,86 @@
 //! any number may show the same terminal, as observers.
 
 mod accessibility;
+mod copy_mode;
+mod find;
+mod history;
 pub(super) mod keys;
+mod links;
 pub(super) mod paste;
 mod pointer;
+mod quote;
+mod slide;
+
+pub(crate) use links::LinkClick;
 
 use super::{
+    effects::Effects,
     screen::Screen,
     selection::{Cell, Selection},
     worker::{Command, Link},
 };
 use crate::{
-    config::{OptionAsAlt, Padding},
+    config::{FontConfig, OptionAsAlt, Padding, Theme},
+    herdr_settings::RightClickPassthrough,
     i18n::fl,
     terminal::{HeldKeys, key_input, viewport},
-    terminal_painter::{Ground, TerminalPainter},
+    terminal_painter::{Ground, ImageTarget, PlacedImages, TerminalPainter},
 };
 use gpui::{prelude::*, *};
 use sheprd_backend::{ClientPaneInputEvent, FrameData, Size, TerminalId};
 use std::{cell::RefCell, ops::Range, rc::Rc, sync::Arc};
 
-/// How the window draws terminals, copied into each view and refreshed when
-/// fonts, theme, or options change.
+/// How the window draws terminals and handles the pointer over them,
+/// copied into each view and refreshed when fonts, theme, or options change.
+/// Herdr's shared `ui` settings apply to herdr-core panes as to Herdr panes.
 #[derive(Clone, PartialEq)]
 pub(crate) struct Look {
     pub(crate) background: Hsla,
     pub(crate) cell_height: f32,
     pub(crate) cell_width: f32,
+    /// The window's own look, for what the view draws over its cells.
+    pub(crate) chrome: Rc<Chrome>,
+    /// Herdr's `ui.copy_on_select`: releasing a selection copies it.
+    pub(crate) copy_on_select: bool,
     pub(crate) font: Font,
     pub(crate) ground: Ground,
+    /// The GUI's `keep_selection_after_copy`: a copied selection stays
+    /// highlighted.
+    pub(crate) keep_selection: bool,
     pub(crate) option_as_alt: OptionAsAlt,
     pub(crate) padding: Padding,
+    /// Herdr's `ui.right_click_passthrough_modifier`.
+    pub(crate) right_click_passthrough: RightClickPassthrough,
+    /// Herdr's `ui.mouse_scroll_lines`: lines one wheel notch scrolls.
+    pub(crate) scroll_lines: std::num::NonZeroU16,
+    /// Whether a scroll through the history slides into place.
+    pub(crate) smooth_scroll: bool,
 }
+
+/// The window's colors and interface font, for the find bar a view draws.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct Chrome {
+    pub(crate) theme: Theme,
+    pub(crate) ui: FontConfig,
+}
+
+/// How much of the background covers a stale frame, as Herdr 1's
+/// reconnecting overlay dims its last picture.
+const STALE_DIM: f32 = 0.63;
+
+/// What a view asks of the window it is in.
+#[derive(Debug)]
+pub(crate) enum ToWindow {
+    /// Open a link clicked with the link modifier held.
+    OpenLink(LinkClick),
+    /// Say that a selection went to the clipboard.
+    Copied,
+    /// Say why something the user did was refused.
+    Refused(crate::Error),
+}
+
+/// How a view reaches the window it is in.
+pub(crate) type WindowCall = Rc<dyn Fn(ToWindow, &mut Window, &mut App)>;
 
 /// The least room a split's cells keep from their pane's edges, across
 /// and down.
@@ -52,17 +101,47 @@ pub(crate) struct PaneLook {
 pub(crate) struct CoreTerminalView {
     /// Where the cells were last painted, for the IME's candidate window.
     bounds: Option<Bounds<Pixels>>,
+    copy_mode: Option<copy_mode::CopyModeState>,
+    /// The history read whose text goes to the clipboard.
+    copying: Option<history::Reading>,
+    /// The selection whose copy landed, to be said on the next poll.
+    copied: Option<Selection>,
+    /// Something typed while the connection was away, for the window to
+    /// say it was not sent.
+    dropped: std::cell::Cell<bool>,
+    /// The terminal's working directory, as herdr-core last reported it.
+    cwd: Option<String>,
+    /// Bells and clipboard writes the window has not taken yet.
+    effects: Effects,
+    /// The history text asked for an editor, once it arrived.
+    edit_ready: Option<Result<String, super::Error>>,
+    /// The history request whose text goes to an editor.
+    editing: Option<u64>,
+    find: Option<find::Find>,
+    /// The query the find bar last held, for the next one.
+    find_query: String,
     focus: FocusHandle,
     /// Releases for keys pressed while the program asked for them.
     held_keys: HeldKeys,
+    /// Where the pointer is while it drags a selection, which scrolls the
+    /// history while it is held past the screen.
+    dragged_to: Option<Point<Pixels>>,
     /// The cell a button-less pointer last reported, so movement inside
     /// one cell is not reported again.
     hovered: Option<Cell>,
     id: TerminalId,
     link: Link,
+    /// The link under the pointer and the one a press went down on.
+    links: links::Links,
     look: Look,
+    /// The history read whose text a note quotes.
+    quoting: Option<history::Reading>,
+    /// The text a note quotes, once read from the history.
+    quote_ready: Option<Result<String, super::Error>>,
     /// Text an IME is composing; committed text goes to the terminal.
     marked: String,
+    /// The last history request's ID.
+    next_request: u64,
     /// A mirror's view: it watches and never types.
     observe: bool,
     painter: Rc<RefCell<TerminalPainter>>,
@@ -70,18 +149,36 @@ pub(crate) struct CoreTerminalView {
     pane: Option<PaneLook>,
     /// Where the button held down is going.
     press: Option<pointer::Press>,
+    /// Whether the terminal runs in another host's core.
+    remote: bool,
+    /// When a drag past the screen last scrolled the history.
+    scrolled_at: Option<std::time::Instant>,
     selection: Option<Selection>,
+    /// A scroll sliding into place.
+    slide: Option<slide::Slide>,
     /// The last frame painted with its cursor hidden, and the frame it came
     /// from, so a veiled pane copies a frame once rather than every paint.
     sleeping: Option<(Arc<FrameData>, Arc<FrameData>)>,
     screen: Screen,
+    /// The cell size in whole pixels the terminal was last told.
+    sent_cell: Option<(u16, u16)>,
     sent_focus: Option<bool>,
     sent_size: Option<Size>,
+    /// The connection to herdr-core dropped: the last frame stays, dimmed,
+    /// and nothing typed is sent until the terminal is attached again.
+    stale: bool,
+    /// The window's end; a view on its own, as in tests, has none.
+    to_window: Option<WindowCall>,
     /// Wheel motion short of a whole row, kept for the next event.
     wheel_rest: f32,
 }
 
 impl CoreTerminalView {
+    /// The terminal it shows.
+    pub(crate) fn terminal(&self) -> &TerminalId {
+        &self.id
+    }
+
     pub(crate) fn new(
         id: TerminalId,
         link: Link,
@@ -92,23 +189,110 @@ impl CoreTerminalView {
     ) -> Self {
         Self {
             bounds: None,
+            copy_mode: None,
+            copying: None,
+            copied: None,
+            dropped: std::cell::Cell::new(false),
+            cwd: None,
+            effects: Effects::default(),
+            edit_ready: None,
+            editing: None,
+            dragged_to: None,
+            find: None,
+            find_query: String::new(),
             focus: cx.focus_handle(),
             held_keys: HeldKeys::default(),
             hovered: None,
             id,
             link,
+            links: links::Links::default(),
             look,
+            quoting: None,
+            quote_ready: None,
             marked: String::new(),
+            next_request: 0,
             observe,
             painter,
             pane: None,
             press: None,
+            remote: false,
+            scrolled_at: None,
             selection: None,
+            slide: None,
             sleeping: None,
             screen: Screen::default(),
+            sent_cell: None,
             sent_focus: None,
             sent_size: None,
+            stale: false,
+            to_window: None,
             wheel_rest: 0.,
+        }
+    }
+
+    /// Keeps the last frame, dimmed, while the connection is away.
+    pub(crate) fn set_stale(&mut self, cx: &mut Context<Self>) {
+        self.stale = true;
+        cx.notify();
+    }
+
+    pub(crate) fn is_stale(&self) -> bool {
+        self.stale
+    }
+
+    /// Attaches the terminal again through `link` after a dropped
+    /// connection. The old frame shows until the new link draws one, and the
+    /// terminal is told its size and focus again.
+    pub(crate) fn relink(&mut self, link: Link, cx: &mut Context<Self>) {
+        self.link = link;
+        // The old link's answers never arrive: copy mode stops waiting on
+        // its motion or search and drops the keys queued behind it, and a
+        // copy or an editor's read asked of it is dropped.
+        if let Some(state) = &mut self.copy_mode {
+            state.relinked();
+        }
+        self.copying = None;
+        self.editing = None;
+        self.stale = false;
+        self.screen.failure = None;
+        self.sent_focus = None;
+        self.sent_size = None;
+        cx.notify();
+    }
+
+    /// Whether something was typed while the connection was away, since
+    /// the last ask.
+    pub(crate) fn take_dropped(&self) -> bool {
+        self.dropped.take()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn has_frame(&self) -> bool {
+        self.screen.frame.is_some()
+    }
+
+    /// Lets the view reach the window it is in.
+    pub(crate) fn with_window(mut self, to_window: WindowCall) -> Self {
+        self.to_window = Some(to_window);
+        self
+    }
+
+    /// Keeps the working directory a printed relative path is read
+    /// against, and reads the link under the pointer again when it moved.
+    pub(crate) fn set_cwd(&mut self, cwd: Option<&std::path::Path>, cx: &mut Context<Self>) {
+        let cwd = cwd.and_then(std::path::Path::to_str);
+        if self.cwd.as_deref() != cwd {
+            self.cwd = cwd.map(str::to_owned);
+            self.rehover_link(cx);
+        }
+    }
+
+    /// Whether the pane's terminal runs in another host's core, whose
+    /// printed paths are no link to a file on this computer.
+    pub(crate) fn set_remote(&mut self, remote: bool, cx: &mut Context<Self>) {
+        if self.remote != remote {
+            self.remote = remote;
+            self.rehover_link(cx);
         }
     }
 
@@ -165,22 +349,74 @@ impl CoreTerminalView {
         self.link.mailbox.changed()
     }
 
-    /// Takes what the worker produced; true when there was something.
-    pub(crate) fn poll(&mut self, cx: &mut Context<Self>) -> bool {
-        let Some(screen) = self.link.mailbox.take() else {
-            return false;
-        };
-        self.screen = screen;
-        cx.notify();
-        true
+    /// Takes what the worker produced; true when there was a new screen.
+    /// The answers come with the screen, never made from a newer one, so
+    /// a copy checks its rows against text at least as new as it read.
+    pub(crate) fn poll(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let (screen, answers) = self.link.mailbox.take_with_answers();
+        let changed = screen.is_some();
+        if let Some(mut screen) = screen {
+            // Attached again, the last frame stays until a new one comes.
+            if screen.frame.is_none() {
+                screen.frame = self.screen.frame.take();
+            }
+            // A mirror only watches; the tab driving the terminal rings and
+            // copies.
+            if !self.observe {
+                self.effects.merge(Effects {
+                    bells: screen.bells,
+                    clipboard: screen.clipboard.take(),
+                });
+            }
+            let before = std::mem::replace(&mut self.screen, screen);
+            self.slide_from(&before);
+            // Output into a full history drops its oldest lines, a clear
+            // drops them all, and a resize rewraps them, so the rows a
+            // selection or copy mode's mark holds now hold other text.
+            if self.screen.revision != before.revision
+                && (self.screen.history.full
+                    || self.screen.history.history < before.history.history
+                    || self.screen.grid() != before.grid())
+            {
+                self.selection = None;
+                if let Some(state) = &mut self.copy_mode {
+                    state.forget_mark();
+                }
+            }
+            self.rehover_link(cx);
+            cx.notify();
+        }
+        self.take_answers(answers, cx);
+        if let Some(copied) = self.copied.take() {
+            self.finish_copy(copied, window, cx);
+        }
+        if self.find.is_some() {
+            self.poll_find();
+        }
+        self.poll_copy_mode(window, cx);
+        self.follow_drag(cx);
+        changed
+    }
+
+    /// Bells and the clipboard write found since the last take.
+    pub(crate) fn take_effects(&mut self) -> Effects {
+        std::mem::take(&mut self.effects)
     }
 
     pub(crate) fn set_look(&mut self, look: Look, cx: &mut Context<Self>) {
         self.look = look;
+        self.restyle_find(cx);
         cx.notify();
     }
 
     fn send(&self, input: ClientPaneInputEvent) {
+        if self.stale {
+            // The pointer moving is not typing; only what was typed is told.
+            if !matches!(input, ClientPaneInputEvent::Mouse { .. }) {
+                self.dropped.set(true);
+            }
+            return;
+        }
         self.link.send(Command::Input(input));
     }
 
@@ -193,23 +429,48 @@ impl CoreTerminalView {
             self.look.cell_width,
             self.look.cell_height,
         );
+        // Clamped first, so the casts cannot truncate.
+        let whole = |side: f32| side.round().clamp(1., f32::from(u16::MAX)) as u16;
+        let cell = (whole(self.look.cell_width), whole(self.look.cell_height));
+        if self.sent_cell != Some(cell) {
+            self.sent_cell = Some(cell);
+            self.link.send(Command::CellPixels(cell.0, cell.1));
+        }
         let Ok(size) = Size::new(fits.cols, fits.rows) else {
             return;
         };
-        if self.sent_size != Some(size) {
+        if self.sent_size != Some(size) && !self.stale {
             self.sent_size = Some(size);
             self.link.send(Command::Resize(size));
         }
     }
 
     fn key_down(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        // Typing in the find bar or copy mode's prompt is the field's, not
+        // the terminal's.
+        if self.find_focused(window, cx) || self.copy_search_focused(window, cx) {
+            return;
+        }
+        if self.copy_mode_active() {
+            self.copy_mode_key(event, window, cx);
+            return;
+        }
         let modifiers = event.keystroke.modifiers;
         // Cmd-C copies a selection, as the window's copy does a Herdr pane's.
-        if modifiers.platform
-            && !modifiers.control
+        // Ctrl-C does too only while `copy_on_select` is off, as in Herdr,
+        // where the highlight waits for that copy; a selection the release
+        // already copied must not stop Ctrl-C from interrupting the program.
+        let copies = if modifiers.platform {
+            !modifiers.control && !modifiers.shift
+        } else {
+            modifiers.control && (modifiers.shift || !self.look.copy_on_select)
+        };
+        if copies
+            && !modifiers.alt
             && event.keystroke.key.eq_ignore_ascii_case("c")
-            && self.copy_selection(cx)
+            && self.copy_selection()
         {
+            self.announce_copy();
             cx.stop_propagation();
             window.prevent_default();
             return;
@@ -226,7 +487,7 @@ impl CoreTerminalView {
             cfg!(any(windows, target_os = "linux")),
             has_text,
         ) {
-            self.paste_clipboard(cx);
+            self.paste_clipboard(window, cx);
             cx.stop_propagation();
             window.prevent_default();
             return;
@@ -273,13 +534,16 @@ impl CoreTerminalView {
 
     fn report_focus(&mut self, window: &Window) {
         let focused = self.focus.is_focused(window);
-        if self.sent_focus != Some(focused) {
+        if self.sent_focus != Some(focused) && !self.stale {
             self.sent_focus = Some(focused);
             self.link.send(Command::Focus(focused));
         }
     }
 
     fn status(&self) -> Option<String> {
+        if self.stale {
+            return Some(fl!("core-terminals-reconnecting"));
+        }
         if let Some(failure) = &self.screen.failure {
             return Some(failure.clone());
         }
@@ -305,11 +569,24 @@ impl Render for CoreTerminalView {
         let painter = self.painter.clone();
         let look = self.look.clone();
         let frame = self.frame_to_paint();
-        let highlights = self.highlights();
+        let graphics = self.screen.graphics.clone();
+        let images = self.screen.images.0.clone();
+        let mut highlights = self.find_highlights();
+        highlights.extend(self.copy_mode_highlights());
+        highlights.extend(self.highlights());
+        let find_bar = self.render_find(cx);
+        let copy_badge = self.render_copy_mode(cx);
+        let link_rows = self.link_rows();
+        let on_link = !link_rows.is_empty();
         let pane = self.pane;
         let background = self.look.background;
         let focus = self.focus.clone();
         let status = self.status();
+        let selecting = self.press == Some(pointer::Press::Selecting);
+        let sliding = self.sliding(crate::motion::now());
+        if sliding.is_some() {
+            window.request_animation_frame();
+        }
         let body = div()
             .relative()
             .flex_1()
@@ -320,6 +597,16 @@ impl Render for CoreTerminalView {
                 canvas(
                     move |bounds, _, cx| fitting.update(cx, |view, _| view.fit(bounds)),
                     move |bounds, _, window, cx| {
+                        // A selection dragged past the view's edges keeps
+                        // following the pointer, which no longer hovers it.
+                        if selecting {
+                            let dragging = entity.clone();
+                            window.on_mouse_event(move |event: &MouseMoveEvent, phase, _, cx| {
+                                if phase == DispatchPhase::Bubble {
+                                    dragging.update(cx, |view, cx| view.drag_outside(event, cx));
+                                }
+                            });
+                        }
                         window.handle_input(
                             &focus,
                             crate::input::TerminalInputHandler::new(bounds, entity, false),
@@ -329,9 +616,28 @@ impl Render for CoreTerminalView {
                             return;
                         };
                         window.with_content_mask(Some(ContentMask { bounds }), |window| {
+                            let row = |rows: f32| point(px(0.), px(rows * look.cell_height));
+                            let mut origin = bounds.origin;
+                            if let Some(sliding) = &sliding {
+                                origin -= row(sliding.lift);
+                                painter.borrow_mut().paint_frame(
+                                    &sliding.behind,
+                                    origin + row(sliding.behind_at),
+                                    Some(bounds.size),
+                                    look.ground,
+                                    look.cell_width,
+                                    &look.font,
+                                    &[],
+                                    &[],
+                                    None,
+                                    None,
+                                    window,
+                                    cx,
+                                );
+                            }
                             painter.borrow_mut().paint_frame(
                                 frame,
-                                bounds.origin,
+                                origin,
                                 Some(bounds.size),
                                 look.ground,
                                 look.cell_width,
@@ -339,15 +645,31 @@ impl Render for CoreTerminalView {
                                 &highlights,
                                 &[],
                                 None,
-                                None,
+                                (!graphics.is_empty()).then_some(PlacedImages {
+                                    placements: &graphics,
+                                    images: &images,
+                                    target: ImageTarget::Main,
+                                }),
                                 window,
                                 cx,
                             );
+                            if !link_rows.is_empty() {
+                                painter.borrow().paint_link(
+                                    frame,
+                                    bounds.origin,
+                                    look.cell_width,
+                                    &link_rows,
+                                    window,
+                                );
+                            }
                         });
                     },
                 )
                 .size_full(),
             )
+            .when(self.stale, |body| {
+                body.child(div().absolute().inset_0().bg(background.opacity(STALE_DIM)))
+            })
             .when_some(pane.and_then(|pane| pane.veil), |body, veil| {
                 body.child(
                     div()
@@ -356,6 +678,8 @@ impl Render for CoreTerminalView {
                         .bg(background.opacity(f32::from(veil) / 255.)),
                 )
             })
+            .when_some(find_bar, |body, bar| body.child(bar))
+            .when_some(copy_badge, |body, badge| body.child(badge))
             .when_some(status, |body, status| {
                 body.child(
                     div()
@@ -384,6 +708,8 @@ impl Render for CoreTerminalView {
             .min_w_0()
             .size_full()
             .bg(self.look.background)
+            // A hand marks the verified link a click opens.
+            .when(on_link, |root| root.cursor_pointer())
             .when_some(pane, |root, pane| {
                 // A split's cells never run into its gutter, whatever the
                 // configured padding.
@@ -398,13 +724,40 @@ impl Render for CoreTerminalView {
             })
             .on_key_down(cx.listener(Self::key_down))
             .on_key_up(cx.listener(Self::key_up))
-            .on_action(cx.listener(|this, _: &crate::actions::Paste, _, cx| {
-                this.paste_clipboard(cx);
+            .on_action(cx.listener(|this, _: &crate::actions::Copy, window, cx| {
+                if !this.find_focused(window, cx)
+                    && !this.copy_search_focused(window, cx)
+                    && this.copy_selection()
+                {
+                    this.announce_copy();
+                }
+            }))
+            .on_action(cx.listener(|this, _: &crate::actions::Paste, window, cx| {
+                if !this.find_focused(window, cx)
+                    && !this.copy_search_focused(window, cx)
+                    && !this.copy_mode_active()
+                {
+                    this.paste_clipboard(window, cx);
+                }
+            }))
+            .on_drop(cx.listener(|this, paths: &ExternalPaths, window, cx| {
+                this.drop_files(paths, window, cx);
             }))
             .on_mouse_down(MouseButton::Left, cx.listener(Self::mouse_down))
             .on_mouse_down(MouseButton::Right, cx.listener(Self::mouse_down))
             .on_mouse_down(MouseButton::Middle, cx.listener(Self::mouse_down))
             .on_mouse_move(cx.listener(Self::mouse_move))
+            .on_modifiers_changed(
+                cx.listener(|this, event: &ModifiersChangedEvent, window, cx| {
+                    this.hover_link(window.mouse_position(), event.modifiers, cx);
+                }),
+            )
+            // Moves off the pane reach it no more, so leaving drops the hover.
+            .on_hover(cx.listener(|this, hovered: &bool, _, cx| {
+                if !*hovered {
+                    this.leave_link(cx);
+                }
+            }))
             .on_mouse_up(MouseButton::Left, cx.listener(Self::mouse_up))
             .on_mouse_up(MouseButton::Right, cx.listener(Self::mouse_up))
             .on_mouse_up(MouseButton::Middle, cx.listener(Self::mouse_up))
@@ -454,10 +807,15 @@ impl EntityInputHandler for CoreTerminalView {
         &mut self,
         _: Option<Range<usize>>,
         text: &str,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         self.marked.clear();
+        if self.copy_mode_active() {
+            self.copy_mode_text(text, window, cx);
+            cx.notify();
+            return;
+        }
         if !text.is_empty() {
             self.send(ClientPaneInputEvent::TextCommit(text.into()));
         }

@@ -1,4 +1,7 @@
-use crate::{AgentStatus, CursorState, Error, FrameData, PaneSurfacePatchRow, Result};
+use crate::{
+    AgentStatus, CursorState, Error, FrameData, PaneSurfacePatchRow, Result, ScrollMetrics,
+    SurfaceGraphicsScene,
+};
 use std::{collections::BTreeMap, fmt, path::PathBuf};
 
 /// The longest side a terminal may have, matching the app's viewport clamp.
@@ -93,13 +96,28 @@ impl fmt::Display for TerminalId {
 pub struct TerminalInfo {
     pub agent: AgentStatus,
     pub cwd: Option<PathBuf>,
+    /// What runs in front now, as the backend's host sees it; none once it
+    /// has finished or when the backend does not say.
+    pub foreground: Option<Process>,
     pub id: TerminalId,
     /// Names and values the client that started it attached, which every
     /// client sees, such as the chat endpoint a `herdr-acp` listens on.
     pub labels: BTreeMap<String, String>,
     pub name: Option<String>,
+    /// The name the program gives itself in its status reports (OSC 7501's
+    /// `app`, such as `claude-code`), in its own words: untrusted text.
+    pub reporter: Option<String>,
     pub state: RunState,
     pub title: Option<String>,
+}
+
+/// A process the backend's host runs for a terminal.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Process {
+    pub argv: Vec<String>,
+    /// Its name as the OS has it, such as `node` or `claude`.
+    pub name: String,
+    pub pid: u32,
 }
 
 /// Whether a terminal's program still runs.
@@ -163,10 +181,16 @@ pub struct KeyReporting {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SurfaceUpdate {
     Bell,
+    /// The program set the clipboard (OSC 52): bounded UTF-8 text, never
+    /// bytes or files. Only the latest of a burst is reported.
+    Clipboard(String),
     /// The program ended; no further updates follow.
     Ended(Exit),
     /// The whole visible screen.
     Frame(FrameData),
+    /// The images on screen changed: every placement, and the bytes of each
+    /// image the previous update's placements did not show.
+    Graphics(SurfaceGraphicsScene),
     /// Which key events the program asked for beyond typed text.
     KeyReporting(KeyReporting),
     /// Whether the program reads the mouse: presses and drags go to it,
@@ -177,5 +201,14 @@ pub enum SurfaceUpdate {
         cursor: Option<CursorState>,
         rows: Vec<PaneSurfacePatchRow>,
     },
+    /// Where the view is in its history, and its content revision: a count
+    /// of changes to its text, which history coordinates hold for.
+    Scroll {
+        metrics: ScrollMetrics,
+        revision: u64,
+    },
     Title(String),
+    /// Whether each visible row's line goes on to the next row because the
+    /// terminal wrapped it, which a frame cannot say; sent when it changes.
+    Wraps(Vec<bool>),
 }

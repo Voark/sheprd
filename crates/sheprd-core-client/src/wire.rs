@@ -91,6 +91,12 @@ pub enum StatusState {
     Other,
 }
 
+/// The refusal kind of a send to a program that waits on the user.
+pub const BLOCKED: &str = "blocked";
+
+/// The refusal kind of a send whose `if` status no longer holds.
+pub const STATUS_MISMATCH: &str = "status_mismatch";
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct List {
     #[serde(default)]
@@ -176,4 +182,66 @@ pub struct Run<'a> {
     /// Another machine this core added.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub on: Option<&'a str>,
+}
+
+/// Text for `terminal.send`: pasted once nobody has typed for a moment, then
+/// submitted with Enter.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct SendText<'a> {
+    /// Type even while the program is blocked on a dialog.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub force: bool,
+    /// Type only while the program reports exactly this status (`idle` or
+    /// `working`), checked by the core as it types; refused with
+    /// [`STATUS_MISMATCH`] otherwise.
+    #[serde(rename = "if", skip_serializing_if = "Option::is_none")]
+    pub only_if: Option<&'a str>,
+    pub terminal: &'a str,
+    pub text: &'a str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct Sent {
+    /// Whether it went working within a few seconds; `None` when it reports
+    /// no status, so nobody can tell.
+    #[serde(default)]
+    pub started: Option<bool>,
+    /// The program's status word when the text went in.
+    #[serde(default)]
+    pub status: Option<String>,
+    /// The turn when the text went in.
+    pub turn: u64,
+}
+
+/// What `terminal.wait` saw: the program stopped working or ended, or the
+/// wait checked in.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct Waited {
+    /// False when the wait checked in: the program is still working.
+    pub ended: bool,
+    #[serde(default)]
+    pub exit_code: Option<i32>,
+    pub reason: WaitReason,
+    /// The program's own status word, when it reports one.
+    #[serde(default)]
+    pub status: Option<String>,
+    pub turn: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WaitReason {
+    /// The program ended, or was lost in a kept terminal.
+    Exit,
+    /// A message reached the waiter.
+    Message,
+    /// After a send, the program did not start working.
+    NotStarted,
+    /// Output it waited for appeared.
+    Output,
+    /// The program reported a status other than working.
+    Status,
+    Timeout,
+    #[serde(other)]
+    Other,
 }

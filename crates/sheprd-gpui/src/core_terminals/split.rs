@@ -31,12 +31,58 @@ struct Draw<'a> {
 }
 
 /// A split's line being dragged: the tab, the split's place in its tree,
-/// and which way it divides.
+/// which way it divides, and the panes on either side. A tree rebuilt
+/// under the drag, by Equalize Splits or another window's save, can put
+/// another split at the same place; its panes tell the two apart.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct SplitDrag {
     tab: TabId,
     path: Vec<bool>,
     axis: Axis,
+    sides: (Vec<TerminalId>, Vec<TerminalId>),
+}
+
+impl SplitDrag {
+    /// The drag of the split at `path` in `node`, as the tab draws it.
+    #[cfg(test)]
+    pub(super) fn at(tab: TabId, node: &Node, path: &[bool]) -> Option<Self> {
+        let mut node = node;
+        for side in path {
+            let Node::Split { first, second, .. } = node else {
+                return None;
+            };
+            node = if *side { second } else { first };
+        }
+        let Node::Split {
+            axis,
+            first,
+            second,
+            ..
+        } = node
+        else {
+            return None;
+        };
+        let mut sides = (Vec::new(), Vec::new());
+        leaves(first, &mut sides.0);
+        leaves(second, &mut sides.1);
+        Some(Self {
+            tab,
+            path: path.to_vec(),
+            axis: *axis,
+            sides,
+        })
+    }
+}
+
+/// The panes under `node`, in layout order.
+fn leaves(node: &Node, out: &mut Vec<TerminalId>) {
+    match node {
+        Node::Leaf(terminal) => out.push(terminal.clone()),
+        Node::Split { first, second, .. } => {
+            leaves(first, out);
+            leaves(second, out);
+        }
+    }
 }
 
 impl SheprdWindow {
@@ -46,19 +92,34 @@ impl SheprdWindow {
         tab: &Tab,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        let now = crate::motion::now();
+        // Only panes whose bodies render count as drawn, so a note does not
+        // stay over a pane a landed zoom hides.
+        let drawn: Vec<_> = self
+            .core_terminals
+            .tabs
+            .get(&tab.id)
+            .into_iter()
+            .flat_map(|shown| shown.drawn_at(now))
+            .filter_map(|terminal| self.core_terminals.views.get(&(tab.id, terminal.clone())))
+            .cloned()
+            .collect();
+        for view in &drawn {
+            self.core_terminals.draw(view);
+        }
         let Some(shown) = self.core_terminals.tabs.get(&tab.id) else {
-            return self.core_placeholder();
+            return self.core_placeholder(&super::Host::of(&tab.scope));
         };
         if shown.panes.count() == 1 {
             let key = (tab.id, shown.panes.first().clone());
             let Some(view) = self.core_terminals.views.get(&key).cloned() else {
-                return self.core_placeholder();
+                return self.core_placeholder(&super::Host::of(&tab.scope));
             };
             view.update(cx, |view, _| view.set_pane(None));
             return self.core_pane_body(key.0, &key.1, &view, cx);
         }
         let zoom = shown
-            .zoom_at(crate::motion::now())
+            .zoom_at(now)
             .map(|(zoomed, shown)| (zoomed.clone(), shown));
         let rects = shown.panes.rects();
         let root = shown.panes.root().clone();
@@ -135,6 +196,9 @@ impl SheprdWindow {
                 second,
             } => (*axis, *share, first, second),
         };
+        let mut sides = (Vec::new(), Vec::new());
+        leaves(first, &mut sides.0);
+        leaves(second, &mut sides.1);
         path.push(false);
         let first = self.core_node(draw, first, path, cx);
         path.pop();
@@ -147,6 +211,7 @@ impl SheprdWindow {
             tab,
             path: path.clone(),
             axis,
+            sides,
         };
         let id: String = path
             .iter()
@@ -249,7 +314,7 @@ impl SheprdWindow {
                 veil: (!is_active).then(|| chrome.veil()),
             }))
         });
-        let info = self.core_terminals.infos.get(terminal);
+        let info = self.core_terminals.info(tab, terminal);
         let shown = view.read(cx);
         let (title, status) = self.core_pane_label(tab, terminal, cx);
         let face = PaneFace {
@@ -271,21 +336,26 @@ impl SheprdWindow {
     /// What a pane is called and how its program is doing, as its chrome
     /// and the sidebar show it: the program's title, else herdr-core's, its
     /// name, or its folder for a shell that sets no title.
-    pub(super) fn core_pane_label(
+    pub(crate) fn core_pane_label(
         &self,
         tab: TabId,
         terminal: &TerminalId,
         cx: &App,
     ) -> (String, AgentStatus) {
-        let info = self.core_terminals.infos.get(terminal);
+        let info = self.core_terminals.info(tab, terminal);
         let view = self
             .core_terminals
             .views
             .get(&(tab, terminal.clone()))
             .map(|view| view.read(cx));
-        let title = view
-            .and_then(|view| view.title())
-            .map(str::to_owned)
+        let named = self
+            .core_terminals
+            .tabs
+            .get(&tab)
+            .and_then(|shown| shown.names.get(terminal))
+            .cloned();
+        let title = named
+            .or_else(|| view.and_then(|view| view.title()).map(str::to_owned))
             .or_else(|| info.and_then(|info| info.title.clone()))
             .or_else(|| info.and_then(|info| info.name.clone()))
             .or_else(|| {
@@ -326,9 +396,9 @@ impl SheprdWindow {
     }
 
     /// What a herdr-core tab shows before its panes have views.
-    fn core_placeholder(&self) -> AnyElement {
-        let note = match self.core_terminals.hub.state() {
-            State::Unavailable(error) => {
+    fn core_placeholder(&self, host: &super::Host) -> AnyElement {
+        let note = match self.core_terminals.hub_of(host).map(super::Hub::state) {
+            Some(State::Unavailable(error)) => {
                 let reason = error.to_string();
                 fl!("core-terminals-unavailable", reason = reason)
             }

@@ -5,16 +5,17 @@ mod cells;
 mod damage;
 mod emulator;
 mod error;
+mod graphics;
 pub mod input;
 mod listener;
 mod modes;
 mod scan;
 
 pub use damage::Damage;
-pub use emulator::{Emulator, Event, Scroll, ScrollMetrics};
+pub use emulator::{Emulator, Event, Scroll};
 pub use error::{Error, Result};
 pub use modes::{Modes, MouseEncoding, MouseReporting};
-pub use sheprd_backend::{MAX_CELLS, MAX_SIDE, Size};
+pub use sheprd_backend::{MAX_CELLS, MAX_SIDE, ScrollMetrics, Size};
 
 // The `CellData::modifier` bits, as the app's painter reads them.
 // keep-sorted start
@@ -34,6 +35,12 @@ pub const MAX_SCROLLBACK_CELLS: usize = 10_000_000;
 /// The longest OSC string (title, hyperlink) the emulator reads; longer ones
 /// are dropped whole rather than buffered without bound.
 pub const MAX_OSC_BYTES: usize = 8 * 1024;
+/// The longest kitty graphics command the emulator reads, one chunk of an
+/// image or a whole one sent unchunked; longer ones are dropped whole.
+pub const MAX_GRAPHICS_COMMAND_BYTES: usize = 8 * 1024 * 1024;
+/// The most text one OSC 52 clipboard write may carry, decoded. Its OSC
+/// string may hold the base64 for this much, past [`MAX_OSC_BYTES`].
+pub const MAX_CLIPBOARD_BYTES: usize = 2 * 1024 * 1024;
 
 #[cfg(test)]
 mod tests;
