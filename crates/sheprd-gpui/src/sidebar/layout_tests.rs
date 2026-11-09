@@ -609,7 +609,6 @@ pub(crate) fn fixture_window(window: &mut Window, cx: &mut Context<SheprdWindow>
         layers: Default::default(),
         #[cfg(target_os = "macos")]
         painted_pages: Vec::new(),
-        surface_in_chrome: false,
         _terminal_focus: terminal_focus,
         chrome_region: None,
         chats: Default::default(),

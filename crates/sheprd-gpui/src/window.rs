@@ -405,9 +405,6 @@ pub(crate) struct SheprdWindow {
     /// Whether the leftmost strip gave Back and Forward their full width
     /// when it was last laid out; see `SheprdWindow::strip_leading`.
     pub(crate) strip_navigation_fits: bool,
-    /// Whether the chrome drew from the live surface (the accessibility
-    /// tree's rows), so a surface-only update must draw it again.
-    pub(crate) surface_in_chrome: bool,
     /// Notified in place of this view by a surface-only update, which redraws
     /// the terminal layers while the cached chrome and sidebar keep theirs.
     pub(crate) surface_signal: Entity<SurfaceSignal>,
@@ -465,12 +462,8 @@ impl SheprdWindow {
     /// Redraws for a surface-only update: the root and the terminal layers
     /// draw again while the cached chrome and sidebar replay. Notifying this
     /// view instead would rebuild both for a frame whose chrome did not
-    /// change, unless the chrome itself drew from the surface.
+    /// change.
     pub(crate) fn redraw_terminal(&mut self, cx: &mut Context<Self>) {
-        if self.surface_in_chrome {
-            cx.notify();
-            return;
-        }
         self.surface_signal.update(cx, |_, cx| cx.notify());
     }
 

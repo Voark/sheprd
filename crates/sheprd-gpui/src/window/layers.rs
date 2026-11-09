@@ -19,10 +19,10 @@
 //! terminal is [`lift`]ed to paint later still, with the window's deferred
 //! draws: menus, toasts, notices, and the marks and grips over the groups.
 //!
-//! What the chrome itself shows from the live surface (the accessibility
-//! tree of the rows, macOS pages the cells paint around) cannot replay, so
-//! while it does, a surface update redraws the chrome too; see
-//! [`SheprdWindow::redraw_terminal`].
+//! The terminal's focus and accessibility node, whose rows follow the
+//! surface, are the cells', in the layer. macOS pages, which the chrome's
+//! grounds paint around, draw the chrome again when they move; see
+//! `SheprdWindow::layers_painted`.
 
 use super::SheprdWindow;
 use crate::browser::Slot;

@@ -76,14 +76,3 @@ fn the_cells_follow_a_resized_window(cx: &mut TestAppContext) {
     assert!(after.right() <= terminal.right());
     assert_eq!(cx.update(|_, cx| view.read(cx).bounds), after);
 }
-
-#[gpui::test]
-fn a_chrome_that_reads_the_surface_draws_with_it(cx: &mut TestAppContext) {
-    let (view, cx) = window_with_terminal(cx);
-    let first = chrome_renders(&view, cx);
-    // As while an assistive client reads the terminal's rows.
-    view.update(cx, |view, _| view.surface_in_chrome = true);
-    view.update(cx, |view, cx| view.redraw_terminal(cx));
-    draw(cx);
-    assert_eq!(chrome_renders(&view, cx), first + 1);
-}

@@ -463,6 +463,9 @@ impl SheprdWindow {
         cells
             .id("terminal-cells")
             .debug_selector(|| "terminal-cells".into())
+            // The terminal's focus and its accessibility node, whose rows
+            // follow the surface, belong to the cells drawn every frame.
+            .map(|cells| self.accessible_terminal(cells, window, cx))
             .when(self.hovered_terminal_link, |cells| cells.cursor_pointer())
             .when_some(self.split_cursor, |cells, cursor| cells.cursor(cursor))
             .map(|cells| self.terminal_keys(cells, cx))

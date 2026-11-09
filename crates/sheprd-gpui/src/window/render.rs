@@ -122,9 +122,6 @@ impl SheprdWindow {
         self.tick_chrome(window, cx);
         self.tick_menu_appear(window);
         self.tick_sidebar_slide(window, cx);
-        // The rows the accessibility tree reads are the live surface's, which
-        // a replayed chrome would not follow.
-        self.surface_in_chrome = window.is_a11y_active();
         let fill = self.fill();
         let sidebar = self
             .sidebar_column_width(f32::from(window.viewport_size().width))
@@ -196,7 +193,6 @@ impl SheprdWindow {
                 terminal.bg(fill.base(self.terminal_theme().background))
             })
             .children(self.terminal_ground(fill.base(self.terminal_theme().background)))
-            .map(|terminal| self.accessible_terminal(terminal, window, cx))
             .map(|terminal| self.terminal_keys(terminal, cx))
             .on_scroll(cx.listener(Self::scroll_wheel))
             .on_drop(cx.listener(Self::drop_terminal_files))

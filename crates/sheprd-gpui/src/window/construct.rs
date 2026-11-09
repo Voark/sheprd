@@ -316,7 +316,6 @@ impl SheprdWindow {
             split_drag: None,
             status_bar_visible,
             strip_navigation_fits: true,
-            surface_in_chrome: false,
             surface_signal,
             system_load: Default::default(),
             tab_drag: None,
