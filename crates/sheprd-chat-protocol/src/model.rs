@@ -44,6 +44,10 @@ pub struct Transcript {
     pub commands: Vec<SlashCommand>,
     #[serde(default)]
     pub entries: Vec<Entry>,
+    /// The agents this chat may still switch to; `None` once its first
+    /// prompt reached the agent, or for a chat started without `--choose`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub harnesses: Option<crate::Harnesses>,
     #[serde(default)]
     pub modes: Option<Modes>,
     /// The session's settings the agent lets a client change, such as the

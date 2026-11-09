@@ -13,7 +13,7 @@ use crate::{
     harness::{Acp, Pipes, Reach},
     herdr::{Reporter, Target},
     process,
-    session::{Config, Flow, Input, Session, Update},
+    session::{Config, Flow, HarnessId, Input, Session, Update},
 };
 
 /// Inputs waiting for the session thread.
@@ -22,68 +22,163 @@ const INPUTS: usize = 1024;
 /// Asks for the ACP adapter, as `--acp` does.
 const ADAPTER_VARIABLE: &str = "HERDR_ACP_ADAPTER";
 
+/// What a chat runs and shows of its agent.
 struct Agent {
-    args: Vec<std::ffi::OsString>,
     display: String,
-    /// Added to what the agent inherits.
-    env: Vec<(&'static str, &'static str)>,
     /// What the agent's own log says of a session it will not replay.
     history: Option<crate::history::Result<sheprd_chat_protocol::Transcript>>,
     login_hint: Option<String>,
+    start: Start,
+}
+
+/// How to start an agent's process and reach it.
+struct Start {
+    args: Vec<std::ffi::OsString>,
+    /// Added to what the agent inherits.
+    env: Vec<(&'static str, &'static str)>,
     program: std::ffi::OsString,
     reach: Box<dyn Reach>,
 }
 
+/// One started agent: its process, and the outbox the session writes to it.
+struct Started {
+    outbox: crate::rpc::Outbox,
+    process: process::AgentProcess,
+}
+
 fn agent(options: &Options, cwd: &std::path::Path) -> Agent {
-    let name = options.name.clone();
     match &options.agent {
         AgentChoice::Builtin { agent, args: extra } => {
-            let agent = *agent;
-            let path = crate::agents::search_path(
-                std::env::var_os("PATH").as_deref(),
-                std::env::home_dir().as_deref(),
-            );
-            let adapter = adapter(options);
-            let mut env = Vec::new();
-            let mut history = None;
-            let (program, mut args, reach): (_, _, Box<dyn Reach>) =
-                match crate::agents::launch(agent, Some(&path), adapter) {
-                    Launch::Native(program) => {
-                        let (args, reach) = native(agent, options.load.as_deref());
-                        history = native_history(agent, options.load.as_deref(), cwd);
-                        if matches!(agent, crate::agents::Agent::Claude) {
-                            let set = std::env::var_os(crate::claude::TODO_TOOLS);
-                            env = crate::claude::env(set.as_deref());
-                        }
-                        (program.into_os_string(), args, reach)
-                    }
-                    // An ACP agent replays its own history on `session/load`.
-                    Launch::Acp(program, args) => (program, args, Box::new(Acp)),
-                };
-            args.extend(extra.iter().cloned());
-            Agent {
-                args,
-                display: name.unwrap_or_else(|| agent.display_name().to_owned()),
-                env,
-                history,
-                login_hint: Some(agent.login_hint().to_owned()),
-                program,
-                reach,
+            let mut built = builtin(*agent, options.load.as_deref(), adapter(options), cwd);
+            built.start.args.extend(extra.iter().cloned());
+            if let Some(name) = &options.name {
+                built.display.clone_from(name);
             }
+            built
         }
         AgentChoice::Command { program, args } => Agent {
-            display: name.unwrap_or_else(|| {
+            display: options.name.clone().unwrap_or_else(|| {
                 PathBuf::from(&program)
                     .file_name()
                     .map_or_else(|| "Agent".to_owned(), |n| n.to_string_lossy().into_owned())
             }),
-            args: args.clone(),
-            env: Vec::new(),
             history: None,
             login_hint: None,
-            program: program.clone(),
-            reach: Box::new(Acp),
+            start: Start {
+                args: args.clone(),
+                env: Vec::new(),
+                program: program.clone(),
+                reach: Box::new(Acp),
+            },
         },
+    }
+}
+
+/// A built-in agent, continuing its session `load` when set.
+fn builtin(
+    agent: crate::agents::Agent,
+    load: Option<&str>,
+    adapter: bool,
+    cwd: &std::path::Path,
+) -> Agent {
+    let path = search_path();
+    let mut env = Vec::new();
+    let mut history = None;
+    let (program, args, reach): (_, _, Box<dyn Reach>) =
+        match crate::agents::launch(agent, Some(&path), adapter) {
+            Launch::Native(program) => {
+                let (args, reach) = native(agent, load);
+                history = native_history(agent, load, cwd);
+                if matches!(agent, crate::agents::Agent::Claude) {
+                    let set = std::env::var_os(crate::claude::TODO_TOOLS);
+                    env = crate::claude::env(set.as_deref());
+                }
+                (program.into_os_string(), args, reach)
+            }
+            // An ACP agent replays its own history on `session/load`.
+            Launch::Acp(program, args) => (program, args, Box::new(Acp)),
+        };
+    Agent {
+        display: agent.display_name().to_owned(),
+        history,
+        login_hint: Some(agent.login_hint().to_owned()),
+        start: Start {
+            args,
+            env,
+            program,
+            reach,
+        },
+    }
+}
+
+/// Where agents are looked for: `PATH`, then where they install themselves.
+fn search_path() -> std::ffi::OsString {
+    crate::agents::search_path(
+        std::env::var_os("PATH").as_deref(),
+        std::env::home_dir().as_deref(),
+    )
+}
+
+/// The agents a `--choose` chat offers: those installed here, and the one
+/// it starts with even when only a fetcher such as `npx` can run it.
+fn choices(agent: crate::agents::Agent) -> Vec<crate::agents::Agent> {
+    let installed = crate::agents::installed(Some(&search_path()));
+    crate::agents::Agent::ALL
+        .iter()
+        .copied()
+        .filter(|choice| *choice == agent || installed.contains(choice))
+        .collect()
+}
+
+/// Starts `start` in `cwd` as `harness`: what the agent says, and its end,
+/// reach the session through `inputs`, marked as this harness's.
+fn start(
+    start: Start,
+    cwd: &std::path::Path,
+    inputs: &Sender<Input>,
+    harness: HarnessId,
+) -> crate::Result<Started> {
+    let spawned = process::spawn(&start.program, &start.args, &start.env, cwd)?;
+    let process = spawned.process.clone();
+    let to_session = inputs.clone();
+    let wired = start.reach.connect(
+        Pipes {
+            input: Box::new(spawned.input),
+            output: Box::new(spawned.output),
+        },
+        Box::new(move |inbound| to_session.send(Input::Agent(harness, inbound)).is_ok()),
+    );
+    let waiter = inputs.clone();
+    let watched = process.clone();
+    let waiting = thread::Builder::new()
+        .name("acp-wait".to_owned())
+        .spawn(move || {
+            let code = watched.wait().ok().and_then(|status| status.code());
+            let stderr = watched.stderr_tail();
+            let _ = waiter.send(Input::AgentExited {
+                code,
+                harness,
+                stderr,
+            });
+        });
+    match (wired, waiting) {
+        (Ok(outbox), Ok(_)) => Ok(Started { outbox, process }),
+        (Err(error), _) | (_, Err(error)) => {
+            process.stop();
+            Err(error.into())
+        }
+    }
+}
+
+/// Stops an agent the chat switched away from, on a thread of its own so
+/// its grace period never holds up the session.
+fn stop_later(process: process::AgentProcess) {
+    let stopping = thread::Builder::new().name("acp-stop".to_owned()).spawn({
+        let process = process.clone();
+        move || process.stop()
+    });
+    if stopping.is_err() {
+        process.stop();
     }
 }
 
@@ -133,27 +228,8 @@ pub(crate) fn run(options: Options) -> anyhow::Result<()> {
         .canonicalize()
         .with_context(|| format!("no directory {}", cwd.display()))?;
     let agent = agent(&options, &cwd);
-    let spawned = process::spawn(&agent.program, &agent.args, &agent.env, &cwd)?;
-    let agent_process = spawned.process.clone();
     let (inputs, receiver) = bounded::<Input>(INPUTS);
-
-    let to_session = inputs.clone();
-    let outbox = agent.reach.connect(
-        Pipes {
-            input: Box::new(spawned.input),
-            output: Box::new(spawned.output),
-        },
-        Box::new(move |inbound| to_session.send(Input::Agent(inbound)).is_ok()),
-    )?;
-    let waiter = inputs.clone();
-    let watched = agent_process.clone();
-    thread::Builder::new()
-        .name("acp-wait".to_owned())
-        .spawn(move || {
-            let code = watched.wait().ok().and_then(|status| status.code());
-            let stderr = watched.stderr_tail();
-            let _ = waiter.send(Input::AgentExited { code, stderr });
-        })?;
+    let first = start(agent.start, &cwd, &inputs, HarnessId::default())?;
 
     let mut notices = Vec::new();
     let history = agent.history.and_then(|history| match history {
@@ -191,22 +267,38 @@ pub(crate) fn run(options: Options) -> anyhow::Result<()> {
         None => None,
     };
     let report = reporter.as_ref().map(Reporter::handle);
-    let session_keeper = keeper.clone();
+    let mut session_keeper = keeper.clone();
+    let adapter = adapter(&options);
 
+    let harness = match &options.agent {
+        AgentChoice::Builtin { agent, .. } => Some(*agent),
+        AgentChoice::Command { .. } => None,
+    };
     let config = Config {
         agent: agent.display,
-        cwd,
+        choices: harness.filter(|_| options.choose).map(choices),
+        cwd: cwd.clone(),
         exit_with_agent: options.headless,
+        harness,
         history,
         load: options.load,
         login_hint: agent.login_hint,
         pane: target.map(|target| target.pane),
         require_load: options.require_load,
     };
+    let launcher = inputs.clone();
     let session_thread = thread::Builder::new()
         .name("acp-session".to_owned())
         .spawn(move || {
-            let mut session = Session::new(config, outbox, move |update| match update {
+            let mut session = Session::new(config, first.outbox, move |update| match update {
+                Update::Harness(agent) => {
+                    if let Some(keeper) = &mut session_keeper {
+                        keeper.switched(agent);
+                    }
+                    if let Some(report) = &report {
+                        report.rename(agent.display_name().to_owned());
+                    }
+                }
                 Update::Opened(id) => {
                     if let Some(keeper) = &session_keeper {
                         keeper.opened(&id);
@@ -227,11 +319,27 @@ pub(crate) fn run(options: Options) -> anyhow::Result<()> {
                 session.notice(level, text);
             }
             session.start();
+            let mut current = Some(first.process);
             for input in receiver {
-                if session.handle(input) == Flow::Exit {
-                    break;
+                match session.handle(input) {
+                    Flow::Continue => {}
+                    Flow::Exit => break,
+                    Flow::Launch { agent, harness } => {
+                        if let Some(old) = current.take() {
+                            stop_later(old);
+                        }
+                        let next = builtin(agent, None, adapter, &cwd);
+                        match start(next.start, &cwd, &launcher, harness) {
+                            Ok(started) => {
+                                current = Some(started.process);
+                                session.launched(started.outbox);
+                            }
+                            Err(error) => session.launch_failed(&error),
+                        }
+                    }
                 }
             }
+            current
         })?;
 
     // Headless, the session ends when the agent does; otherwise when the view quits.
@@ -242,12 +350,14 @@ pub(crate) fn run(options: Options) -> anyhow::Result<()> {
         let _ = inputs.send(Input::Shutdown);
         result
     };
-    let _ = session_thread.join();
+    let current = session_thread.join().ok().flatten();
     // Ending here, not killed, the chat is over: nothing restores it.
     if let Some(keeper) = &keeper {
         keeper.ended();
     }
-    agent_process.stop();
+    if let Some(current) = current {
+        current.stop();
+    }
     if let Some(reporter) = reporter {
         reporter.close();
     }

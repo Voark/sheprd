@@ -9,6 +9,7 @@ use uuid::Uuid;
 use super::*;
 
 mod attachments;
+mod harnesses;
 
 fn key(code: KeyCode, modifiers: KeyModifiers) -> KeyEvent {
     KeyEvent {

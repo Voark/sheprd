@@ -92,6 +92,8 @@ error-chat-rejection-unknown-mode = the agent has no such mode
 error-chat-rejection-unknown-setting = the agent has no such setting, or it does not take that value
 error-chat-rejection-unknown-queued = that prompt is no longer queued
 error-chat-rejection-agent-unavailable = the program could not deliver the command to the agent
+error-chat-rejection-agent-fixed = the chat's agent can no longer change
+error-chat-rejection-agent-missing = that agent is not installed where the chat runs
 # $count is the most files one prompt takes.
 error-chat-rejection-too-many-attachments = a prompt takes at most { $count } files
 error-chat-rejection-queue-full = too many prompts are waiting; wait for the turn to end

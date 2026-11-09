@@ -68,6 +68,12 @@ impl Keeper {
         }
     }
 
+    /// The chat switched to `agent` before its first prompt; the session
+    /// that opens next is that agent's.
+    pub(crate) fn switched(&mut self, agent: Agent) {
+        self.agent = agent;
+    }
+
     /// Records the session that just opened, replacing an earlier one. A
     /// session id that could not be typed back safely is not kept, and its
     /// earlier record goes with it, so a restore never continues a session

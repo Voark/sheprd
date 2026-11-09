@@ -30,6 +30,10 @@ pub enum Error {
     TranscriptAgent,
     #[error("observe needs a Codex/Claude session UUID, positive PID and process start ticks")]
     ObserveIdentity,
+    #[error("`--choose` starts a built-in agent without arguments, not a command")]
+    ChooseCommand,
+    #[error("`--choose` starts a new conversation and cannot continue one")]
+    ChooseLoad,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -55,6 +59,9 @@ pub(crate) struct Options {
     pub agent: AgentChoice,
     /// Listen for Sheprd and other clients.
     pub attach: bool,
+    /// Let a client switch to another installed agent until the first
+    /// prompt reaches this one.
+    pub choose: bool,
     pub cwd: Option<PathBuf>,
     /// Run without the in-pane chat view.
     pub headless: bool,
@@ -127,6 +134,8 @@ Agents:
 Options:
   --acp          Use the agent's ACP adapter, not the agent itself
                  (also HERDR_ACP_ADAPTER=1)
+  --choose       Let clients switch to another installed agent until the
+                 first prompt is sent (Ctrl+O here); not with --load
   --cwd DIR      Run the session in DIR instead of the current directory
   --load ID      Continue the agent's session ID instead of starting a new one
   --resume ID    Continue session ID, and stop rather than start a new one
@@ -144,7 +153,8 @@ Keys:
   /              Complete the agent's commands: Tab takes one, Up/Down choose
   Up/Down        Recall earlier prompts from an empty prompt
   Shift+Tab      Next session mode
-  Ctrl+O         Settings: model, thinking level, mode (Left/Right change)
+  Ctrl+O         Settings: agent (with --choose), model, thinking level,
+                 mode (Left/Right change)
   PgUp/PgDn      Scroll
   Ctrl+D         Quit when the prompt is empty
 ";
@@ -188,6 +198,7 @@ pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Parsed, 
             args: Vec::new(),
         },
         attach: true,
+        choose: false,
         cwd: None,
         headless: false,
         load: None,
@@ -200,6 +211,7 @@ pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Parsed, 
             Some("-h" | "--help") => return Ok(Parsed::Help),
             Some("-V" | "--version") => return Ok(Parsed::Version),
             Some("--acp") => options.adapter = true,
+            Some("--choose") => options.choose = true,
             Some("--headless") => options.headless = true,
             Some("--no-attach") => options.attach = false,
             Some("--cwd") => {
@@ -224,7 +236,7 @@ pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Parsed, 
                         }
                     }
                 };
-                return Ok(Parsed::Run(options));
+                return choosable(options);
             }
             Some(name) if !name.starts_with('-') && agent.is_none() => {
                 agent = Some(
@@ -240,6 +252,24 @@ pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Parsed, 
         agent,
         args: Vec::new(),
     };
+    choosable(options)
+}
+
+/// `options`, unless `--choose` asks for a switch it could not make: to or
+/// from a command or extra arguments only one agent takes, or away from a
+/// conversation the agent already holds.
+fn choosable(options: Options) -> Result<Parsed, Error> {
+    if options.choose {
+        let AgentChoice::Builtin { args, .. } = &options.agent else {
+            return Err(Error::ChooseCommand);
+        };
+        if !args.is_empty() {
+            return Err(Error::ChooseCommand);
+        }
+        if options.load.is_some() {
+            return Err(Error::ChooseLoad);
+        }
+    }
     Ok(Parsed::Run(options))
 }
 

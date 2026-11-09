@@ -35,6 +35,7 @@ impl<R: FnMut(Update)> Session<R> {
                 Ok(())
             }
             Command::StopActivity { call_id } => self.stop_activity(&call_id),
+            Command::SetAgent { agent } => self.set_agent(agent),
         }
         .err();
         self.ack(conn, id, rejected);
@@ -113,8 +114,10 @@ impl<R: FnMut(Update)> Session<R> {
         }
         let request = wire::PromptRequest::new(session, blocks);
         if self.request("session/prompt", &request, Pending::Prompt) {
-            // Only a prompt the agent received names the chat.
+            // Only a prompt the agent received names the chat, and holds
+            // it to this agent.
             (self.report)(Update::Prompt(shown));
+            self.fix_agent();
             self.turn = Some(self.next_request);
             self.emit(Change::Turn {
                 turn: Some(Turn {

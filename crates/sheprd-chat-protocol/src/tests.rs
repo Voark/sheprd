@@ -10,6 +10,7 @@ mod change;
 mod display;
 mod endpoint;
 mod frame;
+mod harnesses;
 mod media;
 mod notices;
 mod revisions;

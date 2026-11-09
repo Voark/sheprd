@@ -6,6 +6,7 @@
 
 mod agent;
 mod commands;
+mod harness;
 mod pictures;
 
 use std::{
@@ -16,8 +17,8 @@ use std::{
 use acp::v1 as wire;
 use crossbeam_channel::{Sender, TrySendError};
 use sheprd_chat_protocol::{
-    ByeReason, Change, Command, CommandId, Cursor, PermissionId, Queued, Rejection, ServerMessage,
-    Status, Transcript, VERSION,
+    Agent, ByeReason, Change, Command, CommandId, Cursor, Harnesses, PermissionId, Queued,
+    Rejection, ServerMessage, Status, Transcript, VERSION,
 };
 use uuid::Uuid;
 
@@ -42,12 +43,18 @@ pub(crate) const MAX_TRANSCRIPT_MEDIA: usize = 8 * 1024 * 1024;
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) struct ConnId(pub u64);
 
+/// One started agent process. A chat that switches agents starts another,
+/// and what the one before says from then on is ignored.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub(crate) struct HarnessId(pub u64);
+
 #[derive(Debug)]
 pub(crate) enum Input {
-    Agent(rpc::Inbound),
+    Agent(HarnessId, rpc::Inbound),
     /// The agent process ended; carries its last standard error lines.
     AgentExited {
         code: Option<i32>,
+        harness: HarnessId,
         stderr: Vec<String>,
     },
     Attach(Attach),
@@ -79,6 +86,13 @@ pub(crate) struct Attach {
 pub(crate) enum Flow {
     Continue,
     Exit,
+    /// Start `agent` as `harness` and hand the session its outbox with
+    /// [`Session::launched`], or say why it did not start with
+    /// [`Session::launch_failed`]. The agent before it is no longer heard.
+    Launch {
+        agent: Agent,
+        harness: HarnessId,
+    },
 }
 
 /// What Herdr is told about the pane.
@@ -93,6 +107,8 @@ pub(crate) enum Activity {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum Update {
     Activity(Activity),
+    /// The chat switched to another built-in agent, which starts next.
+    Harness(Agent),
     /// The agent's session opened with this id, new or continued.
     Opened(String),
     /// A prompt just sent to the agent, as the transcript shows it, which
@@ -102,9 +118,14 @@ pub(crate) enum Update {
 
 pub(crate) struct Config {
     pub agent: String,
+    /// The agents a client may switch to before the first prompt, as
+    /// `--choose` asks; `None` keeps the agent the chat started with.
+    pub choices: Option<Vec<Agent>>,
     pub cwd: PathBuf,
     /// Exit when the agent does, rather than leave its last words on screen.
     pub exit_with_agent: bool,
+    /// The built-in agent running, or `None` for a custom command.
+    pub harness: Option<Agent>,
     /// The conversation so far, for a continued session whose agent does
     /// not replay it.
     pub history: Option<Transcript>,
@@ -146,6 +167,10 @@ pub(crate) struct Session<R: FnMut(Update)> {
     config: Config,
     epoch: Uuid,
     handled: VecDeque<(CommandId, Option<Rejection>)>,
+    /// The agent process heard now.
+    harness: HarnessId,
+    /// An agent to start once the input that chose it is handled.
+    launch: Option<Agent>,
     log: VecDeque<(u64, Change)>,
     /// What the logged changes weigh, by [`change_size`].
     log_bytes: usize,
@@ -171,6 +196,10 @@ impl<R: FnMut(Update)> Session<R> {
             transcript.truncated = history.truncated;
             transcript.usage = history.usage;
         }
+        transcript.harnesses = config.choices.clone().map(|available| Harnesses {
+            available,
+            current: config.harness,
+        });
         let projector = transcript
             .entries
             .last()
@@ -183,6 +212,8 @@ impl<R: FnMut(Update)> Session<R> {
             config,
             epoch: Uuid::new_v4(),
             handled: VecDeque::new(),
+            harness: HarnessId::default(),
+            launch: None,
             log: VecDeque::new(),
             log_bytes: 0,
             next_permission: 0,
@@ -222,14 +253,20 @@ impl<R: FnMut(Update)> Session<R> {
 
     pub(crate) fn handle(&mut self, input: Input) -> Flow {
         match input {
-            Input::Agent(inbound) => self.agent(inbound),
-            Input::AgentExited { code, stderr } => {
+            Input::Agent(harness, inbound) if harness == self.harness => self.agent(inbound),
+            Input::AgentExited {
+                code,
+                harness,
+                stderr,
+            } if harness == self.harness => {
                 self.exited(code, &stderr);
                 if self.config.exit_with_agent {
                     self.bye(ByeReason::Exiting);
                     return Flow::Exit;
                 }
             }
+            // An agent the chat switched away from.
+            Input::Agent(..) | Input::AgentExited { .. } => {}
             Input::Attach(attach) => self.attach(attach),
             Input::Command { command, conn, id } => self.command(conn, id, command),
             Input::Detach(conn) => self.detach(conn),
@@ -241,10 +278,16 @@ impl<R: FnMut(Update)> Session<R> {
                 return Flow::Exit;
             }
         }
-        Flow::Continue
+        match self.launch.take() {
+            Some(agent) => Flow::Launch {
+                agent,
+                harness: self.harness,
+            },
+            None => Flow::Continue,
+        }
     }
 
-    fn cursor(&self) -> Cursor {
+    pub(crate) fn cursor(&self) -> Cursor {
         Cursor {
             epoch: self.epoch,
             seq: self.seq,

@@ -11,7 +11,7 @@ use serde_json::{Value, json};
 use sheprd_chat_protocol::{Command, CommandId, EntryKind, Status};
 
 use super::*;
-use crate::session::{Config, ConnId, Input, Session};
+use crate::session::{Config, ConnId, HarnessId, Input, Session};
 use crate::{harness::Pipes, rpc::Inbound};
 
 const WAIT: Duration = Duration::from_secs(10);
@@ -81,7 +81,7 @@ fn pump<R: FnMut(crate::session::Update)>(
 ) {
     while !done(session) {
         let inbound = delivered.recv_timeout(WAIT).expect("the bridge delivers");
-        session.handle(Input::Agent(inbound));
+        session.handle(Input::Agent(HarnessId::default(), inbound));
     }
 }
 
@@ -105,8 +105,10 @@ fn a_whole_turn_reaches_the_transcript_through_the_bridge() {
     };
     let config = Config {
         agent: "Claude".to_owned(),
+        choices: None,
         cwd: PathBuf::from("/work"),
         exit_with_agent: false,
+        harness: Some(crate::agents::Agent::Claude),
         history: None,
         load: None,
         login_hint: None,

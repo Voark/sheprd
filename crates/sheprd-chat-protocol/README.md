@@ -52,9 +52,18 @@ sub-agent's call as its `parent`, and the sub-agent's own call has the
 state as `finished`, so a newer program never leaves an older client showing
 something as running forever.
 
+A chat started with `herdr-acp --choose` carries `harnesses`: the agents
+installed where it runs and the one it runs now. `Command::SetAgent` switches
+to another of them; the program answers with a `Snapshot` of a new epoch,
+since nothing of the old agent's transcript applies, and refuses with
+`AgentFixed` once `Change::Harnesses` has closed the choice (the first prompt
+reached the agent) or `AgentMissing` for an agent it does not offer. Agents
+travel by name, and a name a client does not know is left out of the list
+rather than failing the transcript.
+
 `assist` holds what every client does the same way with that model:
 completing the agent's slash commands, recalling earlier prompts, and stepping
-a setting. `display` formats durations, token counts, costs, and turn
+a setting or the agent. `display` formats durations, token counts, costs, and turn
 summaries alike in every client.
 
 ## Wire
@@ -68,7 +77,7 @@ its session, so a cursor from an earlier run always gets a snapshot.
 
 `Hello` also carries the `REVISION` the client reads: additions within one
 protocol version that an older client could not decode. Revision 1 adds
-`Change::Activity`. A client that sends no revision always starts from a
+`Change::Activity`; revision 2 adds `Change::Harnesses`. A client that sends no revision always starts from a
 snapshot, and each change it could not read reaches it as `Change::Clients`
 with the count it already holds, so its cursor still moves one step at a time.
 

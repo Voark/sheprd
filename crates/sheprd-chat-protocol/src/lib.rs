@@ -8,6 +8,7 @@ pub mod display;
 mod endpoint;
 mod error;
 mod frame;
+mod harnesses;
 mod media;
 mod model;
 pub mod restore;
@@ -21,6 +22,7 @@ pub use endpoint::{
 };
 pub use error::{Error, Result};
 pub use frame::{MAX_FRAME_SIZE, encode_frame, read_frame, write_frame};
+pub use harnesses::Harnesses;
 pub use media::{Author, Image, ImageType, MAX_IMAGE_DATA};
 pub use model::*;
 pub use wire::*;

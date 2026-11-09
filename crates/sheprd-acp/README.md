@@ -9,6 +9,7 @@ sheprd-acp claude             # or codex, copilot, gemini, opencode
 sheprd-acp -- goose acp       # any ACP agent command
 sheprd-acp --load ID codex    # continue one of the agent's sessions
 sheprd-acp --resume ID codex  # the same, but never start a new session instead
+sheprd-acp --choose claude    # start Claude, but let a client pick another agent
 ```
 
 `sheprd-acp --help` lists every option and key.
@@ -279,6 +280,29 @@ ACP's session config options (model, thinking level, mode, and any others)
 change from **Ctrl+O** here and from the header's buttons in Sheprd; the
 agent's slash commands complete after `/`, and Up and Down step through the
 session's earlier prompts, whichever client sent them.
+
+## Choosing the agent
+
+`--choose` starts a built-in agent but lets any client switch the chat to
+another one installed on the same machine, until the first prompt reaches the
+agent. The transcript then carries `harnesses`: the agents installed here (and
+the one the chat started with, even when only `npx` can run it) and the one
+running now. **Ctrl+O** shows it as the first row here; a client sends
+`SetAgent`.
+
+A switch stops the running agent on a thread of its own and starts the new one
+in the same folder, with `--acp` as given. Nothing the old agent said is kept:
+the program starts a new epoch, so every client replaces its transcript with
+the new agent's, and replies from the old process are ignored. Prompts typed
+while it was still starting stay queued for the new agent. Herdr's display
+name for the pane, the tab label where it still names the old agent, and the
+restore record all follow the switch. An agent that fails to start leaves the
+choice open, so another can be picked.
+
+The first prompt the agent receives closes the choice for good
+(`harnesses` becomes empty): the conversation now lives in that agent.
+`--choose` refuses a custom command, extra agent arguments, `--load`, and
+`--resume`, since another agent could not take any of them over.
 
 ## Behaviour
 

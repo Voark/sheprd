@@ -103,3 +103,25 @@ fn only_a_plain_builtin_chat_in_a_listening_herdr_pane_is_kept() {
     };
     assert!(!keep(dir, Some(&target()), Some(&endpoint), &command));
 }
+
+#[test]
+fn a_switched_chat_restores_the_agent_it_switched_to() {
+    let dir = tempfile::tempdir().unwrap();
+    let endpoint: EndpointId = ENDPOINT.parse().unwrap();
+    let mut keeper = Keeper::new(
+        Some(dir.path().to_owned()),
+        Some(&target()),
+        Some(&endpoint),
+        &builtin(Vec::new()),
+        false,
+        &abs("/work"),
+    )
+    .unwrap();
+    keeper.opened("codex-session");
+    keeper.switched(Agent::Claude);
+    keeper.opened("claude-session");
+    let records = restore::list(dir.path(), None).records;
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].0.agent, Agent::Claude);
+    assert_eq!(records[0].0.session, "claude-session");
+}

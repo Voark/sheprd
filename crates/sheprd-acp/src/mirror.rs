@@ -118,7 +118,7 @@ impl Mirror {
                     self.clients.remove(&conn);
                 }
             }
-            Input::Agent(_) | Input::AgentExited { .. } | Input::Shutdown => {}
+            Input::Agent(..) | Input::AgentExited { .. } | Input::Shutdown => {}
         }
     }
 

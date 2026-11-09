@@ -194,6 +194,8 @@ impl Localize for sheprd_chat_protocol::Rejection {
             Self::UnknownActivity => fl!("error-chat-rejection-unknown-activity"),
             Self::UnknownQueued => fl!("error-chat-rejection-unknown-queued"),
             Self::AgentUnavailable => fl!("error-chat-rejection-agent-unavailable"),
+            Self::AgentFixed => fl!("error-chat-rejection-agent-fixed"),
+            Self::AgentMissing => fl!("error-chat-rejection-agent-missing"),
             Self::TooManyAttachments => fl!(
                 "error-chat-rejection-too-many-attachments",
                 count = sheprd_chat_protocol::MAX_ATTACHMENTS

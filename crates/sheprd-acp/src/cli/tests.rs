@@ -2,6 +2,7 @@
 
 use super::*;
 
+mod choose;
 mod connect;
 mod mirror;
 mod transcripts;
