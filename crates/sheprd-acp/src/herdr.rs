@@ -140,6 +140,11 @@ fn run(
     // The latest prompt's title until Herdr has it and the tab is named,
     // tried again after `RETRY` up to `TITLE_ATTEMPTS` times.
     let mut title: Option<(String, u32)> = None;
+    // After a switch of agents, the name the tab may still show, until the
+    // tab takes the new agent's name; tried again after `RETRY` up to
+    // `TITLE_ATTEMPTS` times, as a later prompt would otherwise take a
+    // label left with the old name for one the user gave.
+    let mut relabel: Option<(String, u32)> = None;
     loop {
         let (activity, renamed, prompt, closing) = {
             let (lock, wake) = mailbox;
@@ -149,7 +154,7 @@ fn run(
                 && state.prompt.is_none()
                 && !state.closing
             {
-                if reported && (!announced || title.is_some()) {
+                if reported && (!announced || title.is_some() || relabel.is_some()) {
                     let (next, waited) = wake
                         .wait_timeout(state, RETRY)
                         .unwrap_or_else(PoisonError::into_inner);
@@ -170,11 +175,12 @@ fn run(
         };
         if let Some(renamed) = renamed.filter(|renamed| *renamed != display) {
             // The tab still named after the agent before takes the new
-            // name; the pane's metadata goes out again with it below.
-            if reported && !closing {
-                let _ = rename_tab(target, &display, given.as_deref(), &renamed, false);
-            }
-            given = None;
+            // name below, and the pane's metadata goes out again with it.
+            // Two quick switches still rename from the name it shows.
+            let shown = relabel
+                .take()
+                .map_or_else(|| display.clone(), |(shown, _)| shown);
+            relabel = Some((shown, 0));
             display = renamed;
             announced = false;
         }
@@ -186,6 +192,18 @@ fn run(
             };
             let _ = report_state(target, state, &mut seq);
             reported = true;
+        }
+        if reported
+            && !closing
+            && let Some((shown, attempts)) = relabel.take()
+        {
+            match rename_tab(target, &shown, given.as_deref(), &display, false) {
+                Ok(true) => given = None,
+                // A label the user gave stays.
+                Ok(false) => {}
+                Err(_) if attempts + 1 < TITLE_ATTEMPTS => relabel = Some((shown, attempts + 1)),
+                Err(_) => {}
+            }
         }
         if reported && !announced && !closing {
             let mut tokens = serde_json::Map::new();

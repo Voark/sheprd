@@ -119,6 +119,8 @@ fn a_switched_chat_restores_the_agent_it_switched_to() {
     .unwrap();
     keeper.opened("codex-session");
     keeper.switched(Agent::Claude);
+    // Until Claude's session opens, nothing restores the chat to Codex.
+    assert!(restore::list(dir.path(), None).records.is_empty());
     keeper.opened("claude-session");
     let records = restore::list(dir.path(), None).records;
     assert_eq!(records.len(), 1);

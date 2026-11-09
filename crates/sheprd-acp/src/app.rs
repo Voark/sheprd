@@ -171,14 +171,20 @@ fn start(
 }
 
 /// Stops an agent the chat switched away from, on a thread of its own so
-/// its grace period never holds up the session.
-fn stop_later(process: process::AgentProcess) {
+/// its grace period never holds up the session. The program joins the
+/// thread before it exits, so an agent that ignores the first request is
+/// still killed rather than outliving the chat.
+fn stop_later(process: process::AgentProcess) -> Option<thread::JoinHandle<()>> {
     let stopping = thread::Builder::new().name("acp-stop".to_owned()).spawn({
         let process = process.clone();
         move || process.stop()
     });
-    if stopping.is_err() {
-        process.stop();
+    match stopping {
+        Ok(handle) => Some(handle),
+        Err(_) => {
+            process.stop();
+            None
+        }
     }
 }
 
@@ -320,13 +326,14 @@ pub(crate) fn run(options: Options) -> anyhow::Result<()> {
             }
             session.start();
             let mut current = Some(first.process);
+            let mut stopping = Vec::new();
             for input in receiver {
                 match session.handle(input) {
                     Flow::Continue => {}
                     Flow::Exit => break,
                     Flow::Launch { agent, harness } => {
                         if let Some(old) = current.take() {
-                            stop_later(old);
+                            stopping.extend(stop_later(old));
                         }
                         let next = builtin(agent, None, adapter, &cwd);
                         match start(next.start, &cwd, &launcher, harness) {
@@ -339,7 +346,7 @@ pub(crate) fn run(options: Options) -> anyhow::Result<()> {
                     }
                 }
             }
-            current
+            (current, stopping)
         })?;
 
     // Headless, the session ends when the agent does; otherwise when the view quits.
@@ -350,13 +357,16 @@ pub(crate) fn run(options: Options) -> anyhow::Result<()> {
         let _ = inputs.send(Input::Shutdown);
         result
     };
-    let current = session_thread.join().ok().flatten();
+    let (current, stopping) = session_thread.join().unwrap_or_default();
     // Ending here, not killed, the chat is over: nothing restores it.
     if let Some(keeper) = &keeper {
         keeper.ended();
     }
     if let Some(current) = current {
         current.stop();
+    }
+    for handle in stopping {
+        let _ = handle.join();
     }
     if let Some(reporter) = reporter {
         reporter.close();
