@@ -106,14 +106,17 @@ impl SheprdWindow {
         let (agents, current) = offered(chat.session.transcript())?;
         let current = current?;
         let rooms = self.chat_agent_rooms(agents, std::time::SystemTime::now());
-        let pick = pick(&rooms, self.chats.last_started)?;
         let line = div()
             .id("chat-agent-advice")
             .debug_selector(|| "chat-agent-advice".into())
             .text_size(size)
             .text_color(rgb(self.theme.subtext()));
-        if pick.chosen == current {
-            let (from, room) = pick.instead_of?;
+        // The Agent button started this agent in place of the one last used.
+        let launched = pick(&rooms, self.chats.last_started)?;
+        if launched.chosen == current
+            && let Some((from, room)) = launched.instead_of
+            && from != current
+        {
             let why = short_text(from, &room)?;
             return Some(line.child(fl!(
                 "chat-pick-started-instead",
@@ -121,12 +124,11 @@ impl SheprdWindow {
                 why = why
             )));
         }
-        let room = rooms
-            .iter()
-            .find(|(agent, _)| *agent == current)
-            .map(|(_, room)| *room)?;
+        // This chat's own agent is short: offer one with more room, judged
+        // against it rather than against the agent last used elsewhere.
+        let (other, (_, room)) = pick(&rooms, Some(current))
+            .and_then(|switch| Some((switch.chosen, switch.instead_of?)))?;
         let why = short_text(current, &room)?;
-        let other = pick.chosen;
         let pane = chat.target.pane_id.clone();
         Some(
             line.cursor_pointer()

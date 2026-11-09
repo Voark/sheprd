@@ -74,10 +74,11 @@ pub(super) fn with_core(mut herdr: Vec<Target>, core: Vec<Target>) -> Vec<Target
     herdr
 }
 
-/// The terminal that runs `program` as a chat with `agent`, listening on
-/// `endpoint` and labelled with it, with the `[chat.env]` variables `extra`.
+/// The terminal that runs `program` as a chat with `agent`, open to
+/// another agent as `choice` says, listening on `endpoint` and labelled
+/// with it, with the `[chat.env]` variables `extra`.
 pub(super) fn spawn(
-    agent: Agent,
+    (agent, choice): (Agent, super::start::AgentChoice),
     program: &Path,
     endpoint: &EndpointId,
     extra: &BTreeMap<String, String>,
@@ -92,11 +93,10 @@ pub(super) fn spawn(
     // not report itself there.
     env.push((PANE_ENV.to_owned(), String::new()));
     Spawn {
-        argv: vec![
-            program.to_string_lossy().into_owned(),
-            super::start::CHOOSE.to_owned(),
-            agent.to_string(),
-        ],
+        argv: std::iter::once(program.to_string_lossy().into_owned())
+            .chain(choice.option().map(str::to_owned))
+            .chain([agent.to_string()])
+            .collect(),
         env,
         labels: BTreeMap::from([(TOKEN.to_owned(), endpoint.to_string())]),
         // herdr-core names are unique handles, so two chats with one agent
@@ -131,7 +131,7 @@ impl SheprdWindow {
             .chat_split_at(tab)
             .ok_or(super::StartError::NoWorkspace)?;
         let spawn = spawn(
-            agent,
+            (agent, self.chats.program_choice),
             &program,
             &EndpointId::random(),
             &self.config.chat.env,

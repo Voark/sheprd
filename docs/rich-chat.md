@@ -69,8 +69,11 @@ short: when its plan has hit a limit, is 80% used, or is half used and on
 pace to run out before it resets, the button starts the installed agent with
 the most room instead, and its tooltip says why. Usage comes from the status
 bar's last reading of the selected host, matched by name (Claude, Codex,
-Copilot, Gemini, OpenCode, Pi); an agent without a reading counts as having
-room, and one tight plan never replaces another. Starting another agent this
+Copilot, Gemini, OpenCode, Pi); every window counts, so a weekly limit
+running out matters even when a session window is fuller. An agent without
+a reading, or whose limits have reset since, counts as having room, and one
+tight plan never replaces another. With usage turned off
+(`[usage] show = false`), the agent you used last is always kept. Starting another agent this
 way does not change your preference: the next chat goes back to the agent
 you used once its plan has room. `sheprd usage pick` shows the same choice
 and each agent's room. Until you send the first prompt,
@@ -88,7 +91,9 @@ plan is short and another's is not, offers to switch to it in one click. The
 model stays the agent's own default; pick it from the composer as before.
 
 Chats on an SSH host keep the agent they start with, because the host's own
-`sheprd-acp` may predate switching. The other launcher placements put a
+`sheprd-acp` may predate switching. So do chats run by an older `sheprd-acp`
+found on this machine's `PATH`: Sheprd asks for the choice only when the
+program's `--help` offers `--choose`. The other launcher placements put a
 button per agent in the strip instead, and those chats can switch too.
 
 ## Chats in Herdr 2 panes

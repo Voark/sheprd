@@ -6,7 +6,7 @@ use crate::{
     NavigationTarget, SheprdWindow,
     chat::{
         Program,
-        start::{self, PROGRAM_ENV, command_line, locate_in, tab_params},
+        start::{self, AgentChoice, PROGRAM_ENV, command_line, locate_in, tab_params},
     },
     sidebar::layout_tests::fixture_window,
     window::MockPeer,
@@ -73,19 +73,19 @@ fn a_file_that_cannot_run_is_not_the_program() {
 #[test]
 fn the_typed_line_names_only_the_agent() {
     for agent in Agent::ALL {
-        let line = command_line(*agent);
+        let line = command_line(*agent, AgentChoice::Open);
         assert!(line.contains(PROGRAM_ENV));
         assert!(line.ends_with(&format!("{agent}'")) || line.ends_with(agent.name()));
         assert!(!line.contains('/'), "{line}");
     }
     if cfg!(unix) {
         assert_eq!(
-            command_line(Agent::Claude),
+            command_line(Agent::Claude, AgentChoice::Open),
             r#" sh -c 'exec "$HERDR_ACP" --choose claude'"#
         );
     } else {
         assert_eq!(
-            command_line(Agent::Claude),
+            command_line(Agent::Claude, AgentChoice::Open),
             "& $env:HERDR_ACP --choose claude"
         );
     }
@@ -224,7 +224,8 @@ fn a_new_chat_opens_a_tab_and_types_the_fixed_line(cx: &mut gpui::TestAppContext
         DaemonMessage::ClientShellPaneInput {
             pane_id: "w1:p9".into(),
             events: vec![
-                ClientPaneInputEvent::TextCommit(command_line(Agent::Claude)),
+                // The fixture's program was never asked for its help.
+                ClientPaneInputEvent::TextCommit(command_line(Agent::Claude, AgentChoice::Fixed)),
                 crate::menu::enter_key(),
             ],
         }
@@ -301,4 +302,32 @@ fn an_agent_the_host_lacks_does_not_start(cx: &mut gpui::TestAppContext) {
             assert!(!view.chat_starting());
         })
     });
+}
+
+#[test]
+fn only_a_program_that_offers_the_choice_is_asked_for_it() {
+    let help = sheprd_help("  --choose       Let clients switch to another installed agent\n");
+    assert_eq!(AgentChoice::from_help(help.as_bytes()), AgentChoice::Open);
+    let older = sheprd_help("  --acp          Use the agent's ACP adapter\n");
+    assert_eq!(AgentChoice::from_help(older.as_bytes()), AgentChoice::Fixed);
+    assert_eq!(AgentChoice::from_help(b""), AgentChoice::Fixed);
+    if cfg!(unix) {
+        assert_eq!(
+            command_line(Agent::Codex, AgentChoice::Fixed),
+            r#" sh -c 'exec "$HERDR_ACP" codex'"#
+        );
+    }
+}
+
+fn sheprd_help(options: &str) -> String {
+    format!("Usage:\n  sheprd-acp [OPTIONS] AGENT\n\nOptions:\n{options}")
+}
+
+#[cfg(unix)]
+#[test]
+fn a_program_that_cannot_run_offers_no_choice() {
+    assert_eq!(
+        AgentChoice::of(Path::new("/nonexistent/sheprd-acp")),
+        AgentChoice::Fixed
+    );
 }

@@ -14,13 +14,17 @@ use sheprd_usage::pick::{Pick, Room, pick};
 
 impl SheprdWindow {
     /// How much room each of `agents` has on the selected host, from the
-    /// usage provider of the same name, as last read.
+    /// usage provider of the same name, as last read. With usage turned
+    /// off, nothing is known: the last reading is frozen, not current.
     pub(crate) fn chat_agent_rooms(&self, agents: &[Agent], now: SystemTime) -> Vec<(Agent, Room)> {
-        let entry = self
-            .endpoints
-            .get(self.selected_endpoint)
-            .and_then(|endpoint| usage::Host::of(&endpoint.connection.target))
-            .and_then(|host| self.usage.entry(&host));
+        let entry = if self.config.usage.show {
+            self.endpoints
+                .get(self.selected_endpoint)
+                .and_then(|endpoint| usage::Host::of(&endpoint.connection.target))
+                .and_then(|host| self.usage.entry(&host))
+        } else {
+            None
+        };
         agents
             .iter()
             .map(|&agent| {
@@ -37,8 +41,6 @@ impl SheprdWindow {
             .collect()
     }
 
-    /// The agent a chat that names none starts with, among `agents`: the
-    /// one last started or picked, unless its plan is short.
     /// Starts the chat the Agent button suggested, `agent`, in `group`.
     /// Usage chose it, not the person: the next chat still prefers the
     /// agent they last started or picked, once its plan has room again.
@@ -55,6 +57,8 @@ impl SheprdWindow {
         }
     }
 
+    /// The agent a chat that names none starts with, among `agents`: the
+    /// one last started or picked, unless its plan is short.
     pub(crate) fn suggested_chat_agent(
         &self,
         agents: &[Agent],

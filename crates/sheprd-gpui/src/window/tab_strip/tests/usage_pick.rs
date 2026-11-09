@@ -100,3 +100,21 @@ fn the_reason_names_the_agent_its_use_and_the_reset() {
     );
     assert_eq!(crate::chat::short_text(Agent::Codex, &Room::Unknown), None);
 }
+
+#[gpui::test]
+fn usage_turned_off_keeps_the_agent_last_used(cx: &mut TestAppContext) {
+    // The last reading stays in memory, but it is no longer refreshed.
+    let (view, cx, mut peer) = strip(cx, ChatLauncher::Agent);
+    view.update(cx, |view, _| {
+        view.chats.last_started = Some(Agent::Claude);
+        view.config.usage.show = false;
+        view.usage = Usage::showing(
+            Host::Local,
+            vec![reading("claude", 99.), reading("codex", 5.)],
+        );
+    });
+    draw(cx);
+    let agent = cx.debug_bounds(AGENT).unwrap().center();
+    cx.simulate_click(agent, Modifiers::none());
+    assert_eq!(peer.request()["params"]["label"], "Claude");
+}

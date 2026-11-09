@@ -559,6 +559,8 @@ pub(crate) struct Chats {
     panes: Vec<ChatPane>,
     /// The `herdr-acp` new chats run.
     pub(crate) program: super::Program,
+    /// Whether that program lets a new chat switch agents.
+    pub(crate) program_choice: super::start::AgentChoice,
     /// Exact pane/process/host targets the user turned back to their terminal.
     /// Two panes may legitimately observe the same session endpoint.
     raw: HashSet<Target>,

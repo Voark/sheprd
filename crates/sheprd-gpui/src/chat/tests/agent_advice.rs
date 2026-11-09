@@ -98,3 +98,30 @@ fn plans_with_room_leave_the_composer_alone(cx: &mut TestAppContext) {
     let _stream = attach_with(&view, &program, running(Agent::Claude), cx);
     assert!(cx.debug_bounds("chat-agent-advice").is_none());
 }
+
+#[gpui::test]
+fn advice_weighs_the_chats_own_agent_not_the_last_one_used(cx: &mut TestAppContext) {
+    // Codex was started elsewhere since; both plans are tight, so moving
+    // this Claude chat to Codex would only trade one short plan for another.
+    let (view, _peer, cx) = open(cx, ConnectTarget::Local);
+    view.update(cx, |view, _| {
+        view.chats.last_started = Some(Agent::Codex);
+        view.usage = Usage::showing(
+            Host::Local,
+            vec![reading("claude", 85.), reading("codex", 90.)],
+        );
+    });
+    let program = Program::new();
+    let _stream = attach_with(&view, &program, running(Agent::Claude), cx);
+    assert!(cx.debug_bounds("chat-agent-advice").is_none());
+}
+
+#[gpui::test]
+fn usage_turned_off_gives_no_advice(cx: &mut TestAppContext) {
+    let (view, _peer, cx) = open(cx, ConnectTarget::Local);
+    claude_short(&view, cx);
+    view.update(cx, |view, _| view.config.usage.show = false);
+    let program = Program::new();
+    let _stream = attach_with(&view, &program, running(Agent::Claude), cx);
+    assert!(cx.debug_bounds("chat-agent-advice").is_none());
+}
