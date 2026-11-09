@@ -107,7 +107,8 @@ fn toast_preview_actions_use_normal_state_without_a_connection(cx: &mut TestAppC
     }
     let dismiss = cx.debug_bounds("toast-dismiss-preview-3").unwrap();
     cx.simulate_click(dismiss.center(), Default::default());
-    view.update(cx, |view, _| {
+    view.update(cx, |view, cx| {
+        cx.notify();
         assert!(view.endpoints[1].toasts.entries.is_empty());
     });
 }
@@ -190,7 +191,8 @@ fn notifications_honor_all_corners_and_global_card_limit(cx: &mut TestAppContext
         ToastHerdrPosition::BottomRight,
     ] {
         cx.update(|window, cx| {
-            view.update(cx, |view, _| {
+            view.update(cx, |view, cx| {
+                cx.notify();
                 view.endpoints[0].toasts = Default::default();
                 let mut wire = notification("Corner");
                 wire.position = Some(position);
@@ -219,7 +221,8 @@ fn notifications_honor_all_corners_and_global_card_limit(cx: &mut TestAppContext
         }
     }
     cx.update(|window, cx| {
-        view.update(cx, |view, _| {
+        view.update(cx, |view, cx| {
+            cx.notify();
             for id in ["one", "two", "three"] {
                 let mut endpoint = crate::endpoint::Endpoint::new(
                     id.into(),

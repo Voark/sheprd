@@ -22,7 +22,7 @@ use crate::{
     state::{ConnectionStatus, LiveState},
     terminal::{popup_origin, viewport},
     terminal_painter::{Ground, ImageTarget, PlacedImages},
-    window::reasserts,
+    window::{layers::Hosted, reasserts},
 };
 use gpui::{prelude::*, *};
 use serde_json::json;
@@ -500,25 +500,11 @@ impl SheprdWindow {
     }
 
     /// A parked group's terminal: its connection's frame, painted without
-    /// input. Pressing the group makes it the group in use, which gives it
-    /// the window's connection and its input.
-    pub(crate) fn render_parked_terminal(
-        &mut self,
-        slot: Slot,
-        font: Font,
-        cell_height: f32,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let surface = self.parked_frame(slot.id);
-        self.render_terminal_picture(
-            slot,
-            "parked-terminal",
-            surface,
-            true,
-            font,
-            cell_height,
-            cx,
-        )
+    /// input over the chrome (see `window::layers`). Pressing the group makes
+    /// it the group in use, which gives it the window's connection and its
+    /// input.
+    pub(crate) fn render_parked_terminal(&mut self, slot: Slot) -> AnyElement {
+        self.terminal_picture_frame(slot, "parked-terminal", Hosted::Parked(slot))
     }
 
     /// The live frame of `tab` in whichever group holds it: the window's
@@ -540,47 +526,31 @@ impl SheprdWindow {
         parked.presentation.picture(&parked.live)
     }
 
+    /// Whether a group picking `tab` has a live frame of it to paint.
+    pub(crate) fn has_live_frame_of(&mut self, tab: &str) -> bool {
+        let window_frame = (self.focused_herdr_tab() == Some(tab))
+            .then(|| self.presentation.picture(&self.live))
+            .flatten();
+        self.live_frame_of(tab, window_frame).is_some()
+    }
+
     /// A group picking a tab another group shows paints a picture of it,
     /// as an editor shows one file in two groups. The daemon sizes the tab
     /// for the group that holds it, so a narrower or wider group shows it
     /// clipped or padded; pressing the group brings the live tab here.
-    pub(crate) fn render_terminal_mirror(
-        &mut self,
-        slot: Slot,
-        surface: Option<Picture>,
-        font: Font,
-        cell_height: f32,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        self.render_terminal_picture(
-            slot,
-            "mirror-terminal",
-            surface,
-            false,
-            font,
-            cell_height,
-            cx,
-        )
+    pub(crate) fn render_terminal_mirror(&mut self, slot: Slot, tab: &str) -> AnyElement {
+        let tab = tab.to_owned();
+        self.terminal_picture_frame(slot, "mirror-terminal", Hosted::Mirror { slot, tab })
     }
 
-    /// A terminal frame painted without input. `place` sizes the group's
-    /// parked connection to where it is drawn.
-    #[allow(clippy::too_many_arguments)]
-    fn render_terminal_picture(
+    /// The chrome's part of a terminal painted without input: its padded box,
+    /// with the frame itself left to a layer.
+    fn terminal_picture_frame(
         &mut self,
         slot: Slot,
         name: &'static str,
-        surface: Option<Picture>,
-        place: bool,
-        font: Font,
-        cell_height: f32,
-        cx: &mut Context<Self>,
+        hosted: Hosted,
     ) -> AnyElement {
-        let group = slot.id;
-        let entity = cx.entity();
-        let painter = self.painter.clone();
-        let cell_width = self.cell_width;
-        let ground = self.ground();
         self.config
             .terminal_padding
             .pad(div())
@@ -591,75 +561,89 @@ impl SheprdWindow {
             .min_w_0()
             .overflow_hidden()
             .bg(self.fill().base(self.terminal_theme().background))
-            .child(
-                canvas(
-                    move |bounds, _, cx| {
-                        if place {
-                            entity.update(cx, |this, _| {
-                                this.place_parked_terminal(group, bounds, cell_height);
-                            });
-                        }
-                    },
-                    move |bounds, _, window, cx| {
-                        let Some(Picture {
-                            frame: surface,
-                            images,
-                        }) = &surface
-                        else {
-                            return;
-                        };
-                        // A frame wider than the group stays inside it.
-                        window.with_content_mask(Some(ContentMask { bounds }), |window| {
-                            painter.borrow_mut().paint_frame(
-                                &surface.frame,
-                                bounds.origin,
-                                Some(bounds.size),
-                                ground,
-                                cell_width,
-                                &font,
-                                &[],
-                                &surface.panes,
-                                None,
-                                Some(PlacedImages {
-                                    placements: &surface.graphics.placements,
-                                    images,
-                                    target: ImageTarget::Main,
-                                }),
-                                window,
-                                cx,
-                            );
-                            if let Some(popup) = &surface.popup {
-                                let offset = popup_origin(
-                                    &surface.frame,
-                                    &popup.frame,
-                                    cell_width,
-                                    cell_height,
-                                );
-                                painter.borrow_mut().paint_frame(
-                                    &popup.frame,
-                                    bounds.origin + offset,
-                                    None,
-                                    Ground::Opaque,
-                                    cell_width,
-                                    &font,
-                                    &[],
-                                    &[],
-                                    None,
-                                    Some(PlacedImages {
-                                        placements: &surface.graphics.placements,
-                                        images,
-                                        target: ImageTarget::Popup(&popup.terminal_id),
-                                    }),
-                                    window,
-                                    cx,
-                                );
-                            }
-                        });
-                    },
-                )
-                .size_full(),
-            )
+            .child(self.layers.place(hosted))
             .into_any_element()
+    }
+
+    /// A terminal frame painted without input, in its layer. `place` sizes
+    /// the group's parked connection to where it is drawn.
+    pub(crate) fn render_terminal_picture(
+        &mut self,
+        slot: Slot,
+        surface: Option<Picture>,
+        place: bool,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let group = slot.id;
+        let entity = cx.entity();
+        let painter = self.painter.clone();
+        let cell_width = self.cell_width;
+        let cell_height = self.config.terminal.line_height();
+        let font = self.config.terminal.font();
+        let ground = self.ground();
+        canvas(
+            move |bounds, _, cx| {
+                if place {
+                    entity.update(cx, |this, _| {
+                        this.place_parked_terminal(group, bounds, cell_height);
+                    });
+                }
+            },
+            move |bounds, _, window, cx| {
+                let Some(Picture {
+                    frame: surface,
+                    images,
+                }) = &surface
+                else {
+                    return;
+                };
+                // A frame wider than the group stays inside it.
+                window.with_content_mask(Some(ContentMask { bounds }), |window| {
+                    painter.borrow_mut().paint_frame(
+                        &surface.frame,
+                        bounds.origin,
+                        Some(bounds.size),
+                        ground,
+                        cell_width,
+                        &font,
+                        &[],
+                        &surface.panes,
+                        None,
+                        Some(PlacedImages {
+                            placements: &surface.graphics.placements,
+                            images,
+                            target: ImageTarget::Main,
+                        }),
+                        window,
+                        cx,
+                    );
+                    if let Some(popup) = &surface.popup {
+                        let offset =
+                            popup_origin(&surface.frame, &popup.frame, cell_width, cell_height);
+                        painter.borrow_mut().paint_frame(
+                            &popup.frame,
+                            bounds.origin + offset,
+                            None,
+                            Ground::Opaque,
+                            cell_width,
+                            &font,
+                            &[],
+                            &[],
+                            None,
+                            Some(PlacedImages {
+                                placements: &surface.graphics.placements,
+                                images,
+                                target: ImageTarget::Popup(&popup.terminal_id),
+                            }),
+                            window,
+                            cx,
+                        );
+                    }
+                });
+            },
+        )
+        .size_full()
+        .into_any_element()
     }
 
     /// Drops every parked connection: the window left their workspace or

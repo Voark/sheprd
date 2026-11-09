@@ -23,6 +23,7 @@ fn open_form(view: &mut SheprdWindow, distros: &[&str], cx: &mut Context<SheprdW
         error: None,
     });
     view.menu.page = Some(Page::AddWsl);
+    cx.notify();
 }
 
 fn key(key: &str) -> KeyDownEvent {

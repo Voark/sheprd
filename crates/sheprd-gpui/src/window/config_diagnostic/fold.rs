@@ -61,7 +61,7 @@ pub(super) struct Measure {
 /// control, drawing again when the answer changes.
 pub(super) fn measure(measure: Measure) -> impl IntoElement {
     canvas(
-        move |bounds, window, _| {
+        move |bounds, window, cx| {
             let room = f32::from(bounds.size.width)
                 + if measure.foldable {
                     CONTROL + CONTROL_GAP
@@ -92,7 +92,7 @@ pub(super) fn measure(measure: Measure) -> impl IntoElement {
                 f32::from(width) > room
             });
             if measure.overflow.set(measure.card, overflows) {
-                window.refresh();
+                crate::window::layers::draw_again(window, cx);
             }
         },
         |_, _, _, _| {},

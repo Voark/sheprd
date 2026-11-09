@@ -5,7 +5,8 @@ fn the_badge_leads_the_card_and_an_emoji_leaves_the_title(cx: &mut TestAppContex
     let (view, cx) = cx.add_window_view(fixture_window);
     cx.simulate_resize(size(px(1000.), px(600.)));
     cx.update(|window, cx| {
-        view.update(cx, |view, _| {
+        view.update(cx, |view, cx| {
+            cx.notify();
             view.endpoints[0].toasts.receive([Notice::new(
                 notification("🚀 Deployed"),
                 Instant::now(),

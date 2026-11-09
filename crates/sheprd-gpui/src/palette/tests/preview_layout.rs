@@ -132,7 +132,8 @@ fn a_streamed_pane_previews_its_cells(cx: &mut TestAppContext) {
 
     // Once its host streams another tab, the pane shows its last frame, aged.
     cx.update(|window, cx| {
-        view.update(cx, |view, _| {
+        view.update(cx, |view, cx| {
+            cx.notify();
             let surface = view.live.surface.take();
             let snapshot = view.live.snapshot.clone();
             view.endpoints[view.selected_endpoint].last_seen.observe(

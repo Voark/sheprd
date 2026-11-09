@@ -7,7 +7,8 @@ fn open_with(view: &Entity<SheprdWindow>, favorites: &[&str], cx: &mut VisualTes
     cx.update(|window, cx| view.update(cx, |view, cx| view.open_theme_picker(window, cx)));
     cx.run_until_parked();
     cx.update(|window, cx| {
-        view.update(cx, |view, _| {
+        view.update(cx, |view, cx| {
+            cx.notify();
             view.config.favorite_themes = favorites.iter().map(|name| (*name).into()).collect();
             let picker = view.menu.themes.as_mut().unwrap();
             picker.names = ["Default", "Dracula", "Nord", "Solarized Dark"]
@@ -25,7 +26,8 @@ fn starred_themes_lead_the_list_and_survive_search(cx: &mut TestAppContext) {
     // A starred theme that is no longer installed is kept but not listed.
     open_with(&view, &["Solarized Dark", "Missing", "Nord"], cx);
     cx.update(|_, cx| {
-        view.update(cx, |view, _| {
+        view.update(cx, |view, cx| {
+            cx.notify();
             let favorites = view.config.favorite_themes.clone();
             let picker = view.menu.themes.as_mut().unwrap();
             assert_eq!(
@@ -52,7 +54,8 @@ fn clicking_a_star_pins_the_theme_without_applying_it(cx: &mut TestAppContext) {
     cx.simulate_resize(size(px(800.), px(600.)));
     open_with(&view, &[], cx);
     cx.update(|_, cx| {
-        view.update(cx, |view, _| {
+        view.update(cx, |view, cx| {
+            cx.notify();
             // Hold the write slot so no click reaches the personal config.
             view.menu.themes.as_mut().unwrap().favorites_saving = true;
         })
@@ -223,7 +226,8 @@ fn a_starred_row_scrolls_into_view_where_it_moves(cx: &mut TestAppContext) {
     cx.simulate_resize(size(px(800.), px(600.)));
     open_with(&view, &[], cx);
     cx.update(|window, cx| {
-        view.update(cx, |view, _| {
+        view.update(cx, |view, cx| {
+            cx.notify();
             let picker = view.menu.themes.as_mut().unwrap();
             picker.names = (0..80).map(|index| format!("Theme {index:02}")).collect();
             picker.filter("", &[]);
@@ -235,7 +239,8 @@ fn a_starred_row_scrolls_into_view_where_it_moves(cx: &mut TestAppContext) {
     assert!(cx.debug_bounds("theme-row-0").is_none());
     assert!(cx.debug_bounds("theme-star-70").is_some());
     cx.update(|window, cx| {
-        view.update(cx, |view, _| {
+        view.update(cx, |view, cx| {
+            cx.notify();
             // Hold the write slot so nothing reaches the personal config.
             view.menu.themes.as_mut().unwrap().favorites_saving = true;
             assert!(view.toggle_favorite_theme("Theme 70"));
@@ -245,7 +250,8 @@ fn a_starred_row_scrolls_into_view_where_it_moves(cx: &mut TestAppContext) {
     // The star moved to the top, and the list followed it there.
     assert!(cx.debug_bounds("theme-star-0").is_some());
     cx.update(|window, cx| {
-        view.update(cx, |view, _| {
+        view.update(cx, |view, cx| {
+            cx.notify();
             assert!(view.toggle_favorite_theme("Theme 70"));
         });
         window.draw(cx).clear(cx);
@@ -259,7 +265,8 @@ fn stars_wait_while_a_theme_is_being_applied(cx: &mut TestAppContext) {
     let (view, cx) = cx.add_window_view(crate::sidebar::layout_tests::fixture_window);
     open_with(&view, &["Dracula"], cx);
     cx.update(|_, cx| {
-        view.update(cx, |view, _| {
+        view.update(cx, |view, cx| {
+            cx.notify();
             view.menu.themes.as_mut().unwrap().accepting = true;
             assert!(!view.toggle_favorite_theme("Nord"));
             assert!(!view.toggle_favorite_theme("Dracula"));

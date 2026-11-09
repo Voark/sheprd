@@ -145,8 +145,9 @@ impl SheprdWindow {
                 None => card.py(inset),
             })
             .child(body)
-            // Last, so the rounded corners trim what the group shows.
-            .child(frame)
+            // Last, and lifted over the terminal layers, so the rounded
+            // corners trim what the group shows.
+            .child(crate::window::layers::lift(frame))
             .into_any_element()
     }
 }

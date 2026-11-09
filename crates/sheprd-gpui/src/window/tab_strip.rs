@@ -8,7 +8,7 @@ mod curved;
 mod dividers;
 mod launcher;
 
-use super::{SheprdWindow, tab_drag::StripDrag};
+use super::{SheprdWindow, layers::lift, tab_drag::StripDrag};
 use crate::i18n::fl;
 #[cfg(test)]
 use crate::tab_layout::{DOT_GAP, ZOOM_ICON};
@@ -844,10 +844,11 @@ impl SheprdWindow {
                 .absolute()
                 .size_full()
             })
-            // A tab carried over the group lands in it when dropped.
+            // A tab carried over the group lands in it when dropped. Lifted,
+            // like the grips, over the terminal drawn on the group.
             .when(self.drop_group() == Some(slot.id), |column| {
                 let accent = crate::menu::accent(&self.theme);
-                column.child(
+                column.child(lift(
                     div()
                         .debug_selector(move || slot.selector("tab-drop"))
                         .absolute()
@@ -855,7 +856,7 @@ impl SheprdWindow {
                         .border_2()
                         .border_color(accent)
                         .bg(accent.opacity(0.12)),
-                )
+                ))
             });
         div()
             .relative()
@@ -871,7 +872,7 @@ impl SheprdWindow {
             })
             .child(column)
             // Last, so the grips lie over what the group shows.
-            .children(reach.grips(slot.index, window, cx))
+            .children(reach.grips(slot.index, window, cx).into_iter().map(lift))
             .into_any_element()
     }
 

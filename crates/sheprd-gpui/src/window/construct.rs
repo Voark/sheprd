@@ -56,7 +56,13 @@ impl SheprdWindow {
             &initial_theme,
         );
         let sidebar_view = cx.new(|_| sidebar::SidebarView::new(weak, indicators));
-        let hosts = vec![cx.entity_id(), sidebar_view.entity_id()];
+        let chrome_window = cx.weak_entity();
+        let chrome_view = cx.new(|_| super::layers::ChromeView::new(chrome_window));
+        let hosts = vec![
+            cx.entity_id(),
+            chrome_view.entity_id(),
+            sidebar_view.entity_id(),
+        ];
         let mark_layer = cx.new(|cx| crate::mark_layer::MarkLayer::new(window, hosts, cx));
         let timer = cx.background_executor().clone();
         let poll = cx.spawn_in(window, async move |this, cx| {
@@ -93,6 +99,7 @@ impl SheprdWindow {
         let security_search = crate::security::SecuritySearch::new(cx);
         let surface_signal = cx.new(|_| SurfaceSignal);
         let sidebar_invalidation = Self::invalidate_sidebar(cx);
+        let chrome_invalidation = Self::invalidate_chrome(cx);
         let host_theme = Self::observe_host_theme(cx);
         let browser = crate::browser::Browser::new(cx);
         // Another window, or an agent, may open or close a tab.
@@ -132,6 +139,7 @@ impl SheprdWindow {
             _activation: activation,
             _appearance: appearance_change,
             _browser_tabs: browser_tabs,
+            _chrome_invalidation: chrome_invalidation,
             _device_tags: device_tags_changed,
             _host_theme: host_theme,
             _notification_mutes: notification_mutes,
@@ -161,6 +169,7 @@ impl SheprdWindow {
             chats: Default::default(),
             checkpoints: Default::default(),
             chrome_region: None,
+            chrome_view,
             #[cfg(feature = "cloud")]
             cloud_jobs: Default::default(),
             #[cfg(feature = "cloud")]
@@ -222,6 +231,7 @@ impl SheprdWindow {
             last_input: None,
             last_pointer: None,
             last_queued_options: None,
+            layers: Default::default(),
             link_complaint: None,
             links: Default::default(),
             listening_ports: Default::default(),
@@ -248,6 +258,8 @@ impl SheprdWindow {
             orchestrator_sampling: false,
             orchestrators: Default::default(),
             overview: Default::default(),
+            #[cfg(target_os = "macos")]
+            painted_pages: Vec::new(),
             painter: Default::default(),
             pane_carry: None,
             pending_images: Vec::new(),
@@ -304,6 +316,7 @@ impl SheprdWindow {
             split_drag: None,
             status_bar_visible,
             strip_navigation_fits: true,
+            surface_in_chrome: false,
             surface_signal,
             system_load: Default::default(),
             tab_drag: None,

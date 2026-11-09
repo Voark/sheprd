@@ -29,10 +29,11 @@ fn branches() -> Vec<Branch> {
 
 fn install_local_listings(view: &Entity<SheprdWindow>, cx: &mut VisualTestContext) {
     cx.update(|_, cx| {
-        view.update(cx, |view, _| {
+        view.update(cx, |view, cx| {
             let source = view.menu.worktree.as_mut().unwrap();
             source.install_checkouts(checkouts());
             source.install_branches(branches());
+            cx.notify();
         });
     });
     draw(cx);

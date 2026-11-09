@@ -142,7 +142,8 @@ fn the_endpoint_card_opens_only_for_its_own_connection(cx: &mut TestAppContext) 
     });
     // A click drawn from a retired connection, or from text since replaced,
     // reaches no card.
-    view.update(cx, |view, _| {
+    view.update(cx, |view, cx| {
+        cx.notify();
         let endpoint = &view.endpoints[0];
         let current = super::super::DrawnFrom {
             endpoint_id: endpoint.id.clone(),
@@ -171,7 +172,10 @@ fn the_keyboard_reaches_the_chevron_and_enter_opens_the_card(cx: &mut TestAppCon
     view.read_with(cx, |view, _| assert!(!view.notices_shown()));
     show_gui_warning(&view, LONG, cx);
     view.read_with(cx, |view, _| assert!(view.notices_shown()));
-    view.update(cx, |view, _| view.chrome_region = Some(Region::Notices));
+    view.update(cx, |view, cx| {
+        view.chrome_region = Some(Region::Notices);
+        cx.notify();
+    });
     draw(cx);
     // The chevron is the region's first stop.
     cx.update(|window, cx| window.focus_next(cx));

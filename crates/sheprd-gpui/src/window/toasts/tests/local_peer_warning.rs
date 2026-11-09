@@ -8,6 +8,7 @@ fn local_peer_warning_shows_recovery_text_without_stealing_focus(cx: &mut TestAp
         cx.update(|window, cx| {
             view.update(cx, |view, cx| {
                 window.focus(&view.focus, cx);
+                cx.notify();
                 view.config.notifications.enabled = false;
                 view.endpoints[0].toasts = Default::default();
                 let warning = crate::daemon::LocalPeerWarning::new(

@@ -37,14 +37,14 @@ fn keep_hints(
     line: Pixels,
 ) -> impl IntoElement {
     canvas(
-        move |_, window, _| {
+        move |_, window, cx| {
             let width = state.viewport_bounds().size.width;
             if width <= px(0.) || hinted.get() == Some(width) {
                 return;
             }
             hinted.set(Some(width));
             state.clone().with_uniform_item_height(line);
-            window.refresh();
+            crate::window::layers::draw_again(window, cx);
         },
         |_, _, _, _| {},
     )

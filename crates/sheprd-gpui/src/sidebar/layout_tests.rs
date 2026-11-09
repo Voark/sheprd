@@ -593,11 +593,23 @@ pub(crate) fn fixture_window(window: &mut Window, cx: &mut Context<SheprdWindow>
             )
         })
     };
-    let hosts = vec![cx.entity_id(), sidebar_view.entity_id()];
+    let chrome_window = cx.weak_entity();
+    let chrome_view = cx.new(|_| crate::window::layers::ChromeView::new(chrome_window));
+    let hosts = vec![
+        cx.entity_id(),
+        chrome_view.entity_id(),
+        sidebar_view.entity_id(),
+    ];
     let mark_layer = cx.new(|cx| crate::mark_layer::MarkLayer::new(window, hosts, cx));
     let focus = cx.focus_handle();
     let terminal_focus = SheprdWindow::leave_region_with_terminal(&focus, window, cx);
     SheprdWindow {
+        _chrome_invalidation: SheprdWindow::invalidate_chrome(cx),
+        chrome_view,
+        layers: Default::default(),
+        #[cfg(target_os = "macos")]
+        painted_pages: Vec::new(),
+        surface_in_chrome: false,
         _terminal_focus: terminal_focus,
         chrome_region: None,
         chats: Default::default(),

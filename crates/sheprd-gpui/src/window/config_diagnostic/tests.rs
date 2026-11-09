@@ -36,7 +36,8 @@ fn draw(cx: &mut VisualTestContext) {
 fn banner_follows_snapshot_dismissal_and_selected_endpoint(cx: &mut TestAppContext) {
     let (view, cx) = cx.add_window_view(fixture_window);
     cx.simulate_resize(size(px(1000.), px(600.)));
-    view.update(cx, |view, _| {
+    view.update(cx, |view, cx| {
+        cx.notify();
         view.endpoints.push(crate::endpoint::Endpoint::new(
             "remote".into(),
             "Remote".into(),
@@ -69,7 +70,10 @@ fn banner_follows_snapshot_dismissal_and_selected_endpoint(cx: &mut TestAppConte
     set_diagnostic(&view, 1, Some("remote: config.toml invalid"), cx);
     set_diagnostic(&view, 0, None, cx);
     assert!(cx.debug_bounds("config-diagnostic").is_none());
-    view.update(cx, |view, _| view.selected_endpoint = 1);
+    view.update(cx, |view, cx| {
+        view.selected_endpoint = 1;
+        cx.notify();
+    });
     draw(cx);
     assert!(cx.debug_bounds("config-diagnostic").is_some());
     // Dismissing it leaves the other endpoint's state alone.
@@ -80,7 +84,10 @@ fn banner_follows_snapshot_dismissal_and_selected_endpoint(cx: &mut TestAppConte
         assert!(view.endpoints[1].config_diagnostic.visible().is_none());
         assert!(view.endpoints[0].config_diagnostic.visible().is_some());
     });
-    view.update(cx, |view, _| view.selected_endpoint = 0);
+    view.update(cx, |view, cx| {
+        view.selected_endpoint = 0;
+        cx.notify();
+    });
     draw(cx);
     assert!(cx.debug_bounds("config-diagnostic").is_some());
 
@@ -122,7 +129,8 @@ fn gui_config_warning_stacks_above_the_endpoint_card(cx: &mut TestAppContext) {
     assert!(cx.debug_bounds("config-diagnostic").is_some());
 
     // A reload that names no unknown keys clears it; new ones bring it back.
-    view.update(cx, |view, _| {
+    view.update(cx, |view, cx| {
+        cx.notify();
         view.gui_config_diagnostic.sync_own(None);
         view.gui_config_diagnostic
             .sync_own(config.diagnostic().as_deref());

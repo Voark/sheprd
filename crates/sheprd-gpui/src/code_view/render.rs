@@ -18,11 +18,11 @@ const OUTLINE_MIN_TAB_WIDTH: f32 = 640.;
 /// across the outline's threshold, so the outline follows on the next frame.
 fn measure(width: Rc<Cell<f32>>) -> impl IntoElement {
     canvas(
-        move |bounds, window, _| {
+        move |bounds, window, cx| {
             let now = f32::from(bounds.size.width);
             let before = width.replace(now);
             if (before >= OUTLINE_MIN_TAB_WIDTH) != (now >= OUTLINE_MIN_TAB_WIDTH) {
-                window.refresh();
+                crate::window::layers::draw_again(window, cx);
             }
         },
         |_, _, _, _| {},

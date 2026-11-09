@@ -252,9 +252,10 @@ fn toast_rendered_clicks_reject_replaced_removed_and_disabled_origins(
                 .with_snapshot(remote.live.snapshot.as_deref())
                 .preview()]);
         cx.update(|window, cx| {
-            view.update(cx, |view, _| {
+            view.update(cx, |view, cx| {
                 view.endpoints.truncate(1);
                 view.endpoints.push(remote);
+                cx.notify();
             });
             window.draw(cx).clear(cx);
         });

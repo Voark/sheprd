@@ -26,13 +26,14 @@ fn connected<'a>(
 ) -> (Entity<SheprdWindow>, &'a mut VisualTestContext) {
     let (view, cx) = cx.add_window_view(fixture_window);
     cx.simulate_resize(size(px(900.), px(700.)));
-    view.update(cx, |view, _| {
+    view.update(cx, |view, cx| {
         view.endpoints[0].connection.handle = Some(peer.client.handle.clone());
         view.live.snapshot = Some(Arc::new(snapshot));
         view.live.status = ConnectionStatus::Connected;
         view.live.supports_announcement_dismiss = true;
         view.live.supports_release_notes_dismiss = true;
         *view.endpoints[0].connection.inbox.lock().unwrap() = view.live.clone();
+        cx.notify();
     });
     draw(cx);
     (view, cx)

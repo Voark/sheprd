@@ -41,11 +41,11 @@ impl Review {
 /// moves it across `NARROW`, so the panels follow on the next frame.
 pub(super) fn measure(width: Rc<Cell<f32>>) -> impl IntoElement {
     canvas(
-        move |bounds, window, _| {
+        move |bounds, window, cx| {
             let now = f32::from(bounds.size.width);
             let before = width.replace(now);
             if (before >= NARROW) != (now >= NARROW) {
-                window.refresh();
+                crate::window::layers::draw_again(window, cx);
             }
         },
         |_, _, _, _| {},

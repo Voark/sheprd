@@ -16,7 +16,7 @@ mod padding;
 mod titlebar_navigation;
 
 /// A coherent surface for `snapshot`, as the daemon projects one.
-pub(super) fn surface(snapshot: &ClientShellSnapshot, pane: &str) -> Arc<PaneSurfaceFrame> {
+pub(crate) fn surface(snapshot: &ClientShellSnapshot, pane: &str) -> Arc<PaneSurfaceFrame> {
     let rect = SurfaceRect {
         x: 0,
         y: 0,
@@ -213,7 +213,7 @@ fn a_parked_connection_reasks_a_size_another_client_overrode() {
 }
 
 /// The fixture window, connected and showing tab `t0` of `w0`.
-pub(super) fn fixture_window_on_t0(
+pub(crate) fn fixture_window_on_t0(
     cx: &mut TestAppContext,
 ) -> (Entity<SheprdWindow>, &mut VisualTestContext) {
     window(cx)

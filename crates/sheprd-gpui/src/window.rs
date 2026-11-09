@@ -30,6 +30,7 @@ mod images;
 mod input;
 mod layout_save;
 pub(crate) use layout_save::LayoutSaves;
+pub(crate) mod layers;
 mod lifecycle;
 pub(crate) use lifecycle::reasserts;
 mod links;
@@ -102,6 +103,8 @@ pub(crate) struct SheprdWindow {
     pub(crate) _activation: Subscription,
     pub(crate) _appearance: Subscription,
     pub(crate) _browser_tabs: Subscription,
+    /// Draws the chrome again whenever this view is notified.
+    pub(crate) _chrome_invalidation: Subscription,
     pub(crate) _device_tags: Subscription,
     pub(crate) _host_theme: Subscription,
     /// Another window may mute or unmute what this one shows.
@@ -152,6 +155,8 @@ pub(crate) struct SheprdWindow {
     pub(crate) checkpoints: crate::checkpoint::Checkpoints,
     /// The chrome region whose controls take Tab; see `chrome_focus`.
     pub(crate) chrome_region: Option<chrome_focus::Region>,
+    /// Everything but the terminals, as a cached view; see `layers`.
+    pub(crate) chrome_view: Entity<layers::ChromeView>,
     /// Cloud machines being added; see `cloud::Jobs`.
     #[cfg(feature = "cloud")]
     pub(crate) cloud_jobs: crate::cloud::Jobs,
@@ -251,6 +256,8 @@ pub(crate) struct SheprdWindow {
     /// The last pointer position over the panes, so a move event that did not move is not use.
     pub(crate) last_pointer: Option<Point<Pixels>>,
     pub(crate) last_queued_options: Option<ConnectOptions>,
+    /// Where the chrome left room for each terminal; see `layers`.
+    pub(crate) layers: std::rc::Rc<layers::Layers>,
     /// The status line text the last link this window failed to follow
     /// left, so following the next one can clear it without touching an
     /// unrelated error.
@@ -299,6 +306,10 @@ pub(crate) struct SheprdWindow {
         std::collections::HashMap<crate::orchestrator::ViewId, crate::orchestrator::Orchestrator>,
     /// The activity bar's Overview page.
     pub(crate) overview: crate::overview::Page,
+    /// The macOS pages under the window's drawing as the layers last left
+    /// them; see `SheprdWindow::layers_painted`.
+    #[cfg(target_os = "macos")]
+    pub(crate) painted_pages: Vec<Bounds<Pixels>>,
     pub(crate) painter: std::rc::Rc<std::cell::RefCell<terminal_painter::TerminalPainter>>,
     /// A pane moving to another device; a move outlives its menu.
     pub(crate) pane_carry: Option<crate::pane_menu::carry::Carry>,
@@ -394,8 +405,11 @@ pub(crate) struct SheprdWindow {
     /// Whether the leftmost strip gave Back and Forward their full width
     /// when it was last laid out; see `SheprdWindow::strip_leading`.
     pub(crate) strip_navigation_fits: bool,
+    /// Whether the chrome drew from the live surface (the accessibility
+    /// tree's rows), so a surface-only update must draw it again.
+    pub(crate) surface_in_chrome: bool,
     /// Notified in place of this view by a surface-only update, which redraws
-    /// the window while the cached sidebar keeps its layout.
+    /// the terminal layers while the cached chrome and sidebar keep theirs.
     pub(crate) surface_signal: Entity<SurfaceSignal>,
     pub(crate) system_load: crate::system_load::SystemLoad,
     /// A press on a tab that may lift it for reordering.
@@ -448,11 +462,22 @@ pub(crate) struct SheprdWindow {
 pub(crate) struct SurfaceSignal;
 
 impl SheprdWindow {
-    /// Redraws for a surface-only update. Notifying this view instead would
-    /// also invalidate the cached sidebar, rebuilding every row for a frame
-    /// whose rows did not change.
+    /// Redraws for a surface-only update: the root and the terminal layers
+    /// draw again while the cached chrome and sidebar replay. Notifying this
+    /// view instead would rebuild both for a frame whose chrome did not
+    /// change, unless the chrome itself drew from the surface.
     pub(crate) fn redraw_terminal(&mut self, cx: &mut Context<Self>) {
+        if self.surface_in_chrome {
+            cx.notify();
+            return;
+        }
         self.surface_signal.update(cx, |_, cx| cx.notify());
+    }
+
+    /// Every notification of this view draws the chrome again, as it did
+    /// when the chrome was part of this view.
+    pub(crate) fn invalidate_chrome(cx: &mut Context<Self>) -> Subscription {
+        cx.observe_self(|this, cx| this.chrome_view.update(cx, |_, cx| cx.notify()))
     }
 
     /// Every notification of this view reaches the cached sidebar, so it

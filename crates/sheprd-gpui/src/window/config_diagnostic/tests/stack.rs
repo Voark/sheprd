@@ -86,7 +86,10 @@ fn dismissing_the_last_card_by_keyboard_returns_to_the_terminal(cx: &mut TestApp
     });
     draw(cx);
     draw(cx);
-    view.update(cx, |view, _| view.chrome_region = Some(Region::Notices));
+    view.update(cx, |view, cx| {
+        view.chrome_region = Some(Region::Notices);
+        cx.notify();
+    });
     draw(cx);
     // With no chevron, the dismiss button is the region's only stop.
     cx.update(|window, cx| window.focus_next(cx));

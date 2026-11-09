@@ -34,6 +34,7 @@ pub(crate) fn connect(
         *inbox = view.live.clone();
         inbox.dirty = false;
     }
+    cx.notify();
 }
 
 fn launch(view: &SheprdWindow, kind: ScriptKind, checkout: Option<&std::path::Path>) -> Launch {
