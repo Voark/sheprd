@@ -1,5 +1,5 @@
-//! `pr`, `host`, `cloud add`, `ports`, `usage`, `system`, `security`, and
-//! `automation approve`: what the
+//! `pr`, `host`, `cloud add`, `ports`, `usage`, `usage pick`, `system`,
+//! `security`, and `automation approve`: what the
 //! window gathers about its hosts, read from the state it already keeps.
 //! Nothing here starts a lookup, a scan, or a sample of its own; a request
 //! answers from the latest one, and says why when there is none. The one
@@ -11,6 +11,7 @@ mod mute;
 mod ports;
 mod pr;
 mod security;
+mod usage_pick;
 
 #[cfg(test)]
 mod tests;
@@ -67,6 +68,9 @@ pub(super) fn serve(
             return local_ports::act(caller, port, action, incoming, watches, cx);
         }
         HostOp::Usage => in_window(caller, cx, |view, _, _| usage(view, SystemTime::now())),
+        HostOp::UsagePick => in_window(caller, cx, |view, _, _| {
+            usage_pick::pick(view, SystemTime::now())
+        }),
         HostOp::System => in_window(caller, cx, |view, _, _| system(view)),
         HostOp::Security => in_window(caller, cx, |view, _, _| security::alerts(view)),
         HostOp::SecurityOpen { repository, item } => in_window(caller, cx, |view, window, cx| {

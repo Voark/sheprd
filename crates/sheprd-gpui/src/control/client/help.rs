@@ -121,7 +121,9 @@ fn family(name: &str) -> &'static str {
         "processes" => {
             "sheprd processes [--pane ID]\n    The processes under a pane (default HERDR_PANE_ID), with CPU and\n    memory. Runs here; Sheprd need not run."
         }
-        "usage" => "sheprd usage\n    AI plan usage on the window's selected host.",
+        "usage" => {
+            "sheprd usage\n    AI plan usage on the window's selected host.\nsheprd usage pick\n    The agent the Agent button would start a chat with now: the one last\n    started or picked, unless its plan is spent or close to its limit and\n    another installed agent's is not. Lists each installed agent's room\n    (ample, unknown, tight, spent) as the status bar last read it. Exits 4\n    when no agent can start."
+        }
         "security" => {
             "sheprd security\n    Private vulnerability reports in triage (titles only) and open\n    Dependabot alerts of the github.com repositories the window's\n    workspaces hold, most severe first, as the Security section last read\n    them (sign in to GitHub first). Exits 4 when there are none.\n    `ui panel security` shows the section.\nsheprd security open REPOSITORY ALERT|GHSA\n    Show alert ALERT (its number) or private report GHSA (its GHSA ID) of\n    REPOSITORY (owner/name) in the Security section, beside its list, as\n    the section last read it."
         }

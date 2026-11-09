@@ -92,6 +92,8 @@ pub enum ControlCommand {
         pane: Option<String>,
     },
     Usage,
+    /// The agent a new chat would start with by plan usage.
+    UsagePick,
     System,
     Security(SecurityCommand),
     Automation(AutomationCommand),
@@ -373,7 +375,11 @@ fn command(family: &'static str, args: &mut Args) -> Result<ControlCommand, CliE
         "processes" => ControlCommand::Processes {
             pane: args.text_option("--pane")?,
         },
-        "usage" => ControlCommand::Usage,
+        "usage" => match args.verb() {
+            None => ControlCommand::Usage,
+            Some(verb) if verb == "pick" => ControlCommand::UsagePick,
+            Some(_) => return Err(CliError::InvalidValue("pick")),
+        },
         "system" => ControlCommand::System,
         "security" => ControlCommand::Security(hosts::security(args)?),
         "automation" => ControlCommand::Automation(hosts::automation(args)?),

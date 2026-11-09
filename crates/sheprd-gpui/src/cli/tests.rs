@@ -20,6 +20,7 @@ mod remote;
 mod security;
 mod ui_agent_group;
 mod ui_panel;
+mod usage_pick;
 
 #[test]
 fn build_info_is_an_informational_mode() {

@@ -3,9 +3,10 @@
 //! running and opens a menu of the others installed where the chat runs.
 
 use super::super::super::chats::{ChatPane, Menu};
-use crate::{SheprdWindow, i18n::fl, icons::AgentIcon};
+use crate::{SheprdWindow, chat::short_text, i18n::fl, icons::AgentIcon};
 use gpui::{prelude::*, *};
 use sheprd_chat_protocol::{Agent, Command, Transcript};
+use sheprd_usage::pick::pick;
 
 /// The agent's mark on the button and in the menu.
 const MARK: f32 = 12.;
@@ -91,6 +92,56 @@ impl SheprdWindow {
                     .into_any_element()
             })
             .collect()
+    }
+
+    /// Why the chat runs another agent than the one last used, or that the
+    /// one it runs is short of plan room and another is not, offering to
+    /// switch: a line over the composer while the chat may still switch.
+    pub(in crate::chat::view) fn render_chat_agent_advice(
+        &self,
+        chat: &ChatPane,
+        size: Pixels,
+        cx: &mut Context<Self>,
+    ) -> Option<Stateful<Div>> {
+        let (agents, current) = offered(chat.session.transcript())?;
+        let current = current?;
+        let rooms = self.chat_agent_rooms(agents, std::time::SystemTime::now());
+        let pick = pick(&rooms, self.chats.last_started)?;
+        let line = div()
+            .id("chat-agent-advice")
+            .debug_selector(|| "chat-agent-advice".into())
+            .text_size(size)
+            .text_color(rgb(self.theme.subtext()));
+        if pick.chosen == current {
+            let (from, room) = pick.instead_of?;
+            let why = short_text(from, &room)?;
+            return Some(line.child(fl!(
+                "chat-pick-started-instead",
+                agent = current.display_name(),
+                why = why
+            )));
+        }
+        let room = rooms
+            .iter()
+            .find(|(agent, _)| *agent == current)
+            .map(|(_, room)| *room)?;
+        let why = short_text(current, &room)?;
+        let other = pick.chosen;
+        let pane = chat.target.pane_id.clone();
+        Some(
+            line.cursor_pointer()
+                .hover(|line| line.text_color(rgb(self.theme.foreground)))
+                .child(fl!(
+                    "chat-pick-suggest",
+                    why = why,
+                    other = other.display_name()
+                ))
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                    cx.stop_propagation();
+                    this.choose_chat_agent(&pane, other, cx);
+                })),
+        )
     }
 
     /// Switches the chat in `pane_id` to `agent`, which the launcher then

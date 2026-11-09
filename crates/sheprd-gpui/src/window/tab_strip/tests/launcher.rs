@@ -12,11 +12,11 @@ use sheprd_chat_protocol::Agent;
 
 const CLAUDE: &str = "chat-launch-claude";
 const CODEX: &str = "chat-launch-codex";
-const AGENT: &str = "chat-launch-agent";
+pub(super) const AGENT: &str = "chat-launch-agent";
 
 /// A window on this user's local daemon that can start chats, with Claude
 /// and Codex installed, its launcher placed as `launcher` says.
-fn strip(
+pub(super) fn strip(
     cx: &mut TestAppContext,
     launcher: ChatLauncher,
 ) -> (Entity<SheprdWindow>, &mut VisualTestContext, MockPeer) {
@@ -42,7 +42,7 @@ fn strip(
     (view, cx, peer)
 }
 
-fn draw(cx: &mut VisualTestContext) {
+pub(super) fn draw(cx: &mut VisualTestContext) {
     cx.update(|window, cx| crate::sidebar::layout_tests::full_draw(window, cx).clear(cx));
 }
 

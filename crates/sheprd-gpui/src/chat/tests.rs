@@ -16,6 +16,7 @@ use std::{
 };
 
 mod activity;
+mod agent_advice;
 mod agent_picker;
 mod attachments;
 mod chats;

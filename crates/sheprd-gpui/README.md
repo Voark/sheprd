@@ -3524,7 +3524,9 @@ also be started by hand in any pane: `sheprd-acp claude`.
 
 **One click.** Each tab strip also offers an **Agent** button right after
 **+** that starts a chat in a new tab of that group, with the agent last
-started (else the first installed); the chat's tab looks like any other, and
+started (else the first installed), or, when that agent's plan is spent or
+close to its limit, the installed agent with the most room, as the tooltip
+and composer then say (see [Choosing the agent](../../docs/rich-chat.md#choosing-the-agent)); the chat's tab looks like any other, and
 **+** still opens a terminal tab. Until its first prompt, the chat's composer
 offers the other installed agents in its own button, first among the
 settings; picking one restarts the chat with that agent, and the launcher

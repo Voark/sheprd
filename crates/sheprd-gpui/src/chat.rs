@@ -26,6 +26,7 @@ mod link;
 mod list;
 pub(crate) mod page;
 pub(crate) mod pasted;
+mod pick;
 mod prepared;
 #[cfg(feature = "integration-test")]
 pub(crate) mod preview;
@@ -56,6 +57,7 @@ pub(super) fn now_ms() -> u64 {
         })
 }
 pub(crate) use convert::Error as ConvertError;
+pub(crate) use pick::short_text;
 pub(crate) use start::{Error as StartError, PROGRAM_ENV, Program};
 
 use sheprd_chat_protocol::{ByeReason, EndpointId};
