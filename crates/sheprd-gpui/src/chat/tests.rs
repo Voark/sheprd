@@ -24,6 +24,7 @@ mod code;
 mod composer;
 mod controls;
 mod convert;
+mod core_convert;
 mod core_panes;
 mod discovery;
 mod embeds;
