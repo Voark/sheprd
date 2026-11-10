@@ -2065,7 +2065,9 @@ If **New worktree** finds that the requested branch already has a checkout,
 Sheprd warns that it already exists, pulls its remote with a fast-forward-only
 update, and opens that checkout. Fork pull requests update from their PR ref.
 A failed pull is shown as a warning and the checkout still opens. Reopening
-does not rerun setup scripts or launch another agent.
+does not rerun setup scripts or launch another agent. If you switch hosts while
+an existing Herdr 2 checkout is being pulled, its result is reported with the
+original host's name without switching you back or opening the checkout.
 
 A repository can commit scripts that prepare, start, and clean up its
 worktrees, in `.herdr/worktree.toml` at the repository root:

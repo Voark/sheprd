@@ -5,6 +5,7 @@ use crate::{
     menu::{Page, WorkspaceAction},
     sidebar::layout_tests,
 };
+use gpui::TestAppContext;
 use serde_json::json;
 
 fn listing(branch: &str) -> crate::state::DialogResponse {
@@ -68,7 +69,7 @@ fn a_failed_pull_still_opens_the_existing_workspace_and_reports_the_warning(
             let warning = pull_notice(Err(crate::Error::NotConnected));
             let source = view.menu.worktree.as_mut().unwrap();
             source.pending = Some(Pending::Checkout("/repo/existing".into()));
-            source.reuse_notice = Some(warning.clone());
+            source.reuse_notice = Some(warning);
             view.apply_creation_response(
                 Ok(json!({"result": {
                     "type": "worktree_opened", "workspace": {"workspace_id": "w4"}
@@ -86,11 +87,15 @@ fn a_failed_pull_still_opens_the_existing_workspace_and_reports_the_warning(
             let notice = &view.endpoints[view.selected_endpoint]
                 .toasts
                 .entries
-                .last()
+                .back()
                 .unwrap()
                 .1;
             assert_eq!(notice.title, "Worktree already exists");
-            assert_eq!(notice.body.as_deref(), Some(warning.as_str()));
+            // Toasts strip Fluent's direction-isolation marks for display.
+            assert_eq!(
+                notice.body.as_deref(),
+                Some("Could not pull the existing worktree's remote: Not connected to a daemon.")
+            );
         });
     });
 }

@@ -6,7 +6,7 @@ use crate::{
     i18n::{Localize, fl},
     menu::{WorkspaceAction, worktree_open, worktree_source::Pending},
 };
-use gpui::*;
+use gpui::Context;
 use sheprd_client::Method;
 use sheprd_remote::{teleport::Host, work};
 use std::sync::atomic::AtomicBool;

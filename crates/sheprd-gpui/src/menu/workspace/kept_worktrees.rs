@@ -110,16 +110,23 @@ pub(crate) struct Landing {
 impl Landing {
     /// A landing in a shell, named `label`, for tests that finish Git work
     /// without running Git.
-    pub(crate) fn shell(label: Option<&str>) -> Self {
+    pub(crate) fn shell(endpoint: &str, label: Option<&str>) -> Self {
         Self {
             label: label.map(str::to_owned),
             chosen: None,
             group: None,
             repo: None,
-            endpoint: String::new(),
+            endpoint: endpoint.to_owned(),
             note: None,
             notice: None,
             setup: None,
+        }
+    }
+
+    pub(crate) fn reused(endpoint: &str, pulled: crate::Result<()>) -> Self {
+        Self {
+            notice: Some(super::reuse::pull_notice(pulled)),
+            ..Self::shell(endpoint, None)
         }
     }
 }
@@ -415,6 +422,28 @@ impl SheprdWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // Pulling an existing checkout may finish after its host was left.
+        // Preserve its result as feedback without reopening it on another host.
+        if matches!(ask, Ask::Open { .. })
+            && self.endpoints[self.selected_endpoint].id != landing.endpoint
+        {
+            if let Some(notice) = landing.notice {
+                let host = self
+                    .endpoints
+                    .iter()
+                    .find(|endpoint| endpoint.id == landing.endpoint)
+                    .map_or(landing.endpoint.as_str(), |endpoint| {
+                        endpoint.label.as_str()
+                    });
+                let body = fl!(
+                    "worktree-source-background-result",
+                    host = host,
+                    result = notice
+                );
+                self.local_transfer_notice(&fl!("worktree-source-already-exists"), body, cx);
+            }
+            return;
+        }
         if matches!(ask, Ask::Create { .. }) {
             if let Some(note) = landing.note {
                 crate::menu::worktree_source::write_note(note, path.clone(), cx);

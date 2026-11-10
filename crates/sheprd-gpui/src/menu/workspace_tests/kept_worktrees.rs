@@ -159,7 +159,7 @@ fn a_made_checkout_lands_in_a_kept_workspace(cx: &mut TestAppContext) {
             view.menu.creation = Some("kept-1".into());
             view.kept_worktree_done.push(KeptDone::Checkout {
                 request: "kept-1".into(),
-                landing: Box::new(KeptLanding::shell(Some("lane"))),
+                landing: Box::new(KeptLanding::shell(&view.endpoints[0].id, Some("lane"))),
                 result: Ok((
                     Ask::Create {
                         branch: "lane".into(),
@@ -197,7 +197,7 @@ fn a_refused_checkout_keeps_the_dialog_open(cx: &mut TestAppContext) {
             view.menu.creation = Some("kept-2".into());
             view.kept_worktree_done.push(KeptDone::Checkout {
                 request: "kept-2".into(),
-                landing: Box::new(KeptLanding::shell(None)),
+                landing: Box::new(KeptLanding::shell(&view.endpoints[0].id, None)),
                 result: Err(crate::Error::StaleWorkspace),
             });
             view.poll_kept_worktree(window, cx);
@@ -285,7 +285,7 @@ fn work_finishing_together_all_lands(cx: &mut TestAppContext) {
             for (request, path) in [("kept-5", NEW), ("kept-6", other)] {
                 view.kept_worktree_done.push(KeptDone::Checkout {
                     request: request.into(),
-                    landing: Box::new(KeptLanding::shell(None)),
+                    landing: Box::new(KeptLanding::shell(&view.endpoints[0].id, None)),
                     result: Ok((Ask::Open { path: path.into() }, path.into())),
                 });
             }
@@ -355,4 +355,5 @@ fn a_kept_dialog_outlives_the_tick_without_herdr_1(cx: &mut TestAppContext) {
     });
 }
 
+mod reuse;
 mod workflows;

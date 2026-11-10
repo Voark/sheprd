@@ -59,8 +59,10 @@ worktree-source-from-fork = from a fork
 
 worktree-source-already-exists = Worktree already exists
 worktree-source-reusing = Already exists — will open it and pull its remote.
-worktree-source-reused = Opened the existing worktree and pulled its remote.
-worktree-source-pull-failed = Opening the existing worktree. Could not pull its remote: { $error }
+worktree-source-reused = Pulled the existing worktree's remote.
+worktree-source-pull-failed = Could not pull the existing worktree's remote: { $error }
+# A pull finished after the user selected another host. $result is its outcome.
+worktree-source-background-result = { $host }: { $result }
 worktree-source-no-checkout-path = The daemon did not report the new checkout path, so no agent context note was written.
 
 # The open worktree picker.
