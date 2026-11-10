@@ -9,6 +9,7 @@ mod kept_worktrees;
 pub(super) mod popover;
 mod render;
 mod requests;
+mod reuse;
 #[cfg(feature = "cloud")]
 mod sandbox_images;
 mod scripts;

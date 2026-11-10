@@ -361,7 +361,12 @@ impl SheprdWindow {
             // Dismissing only closes the panel; the daemon keeps the queued work.
             let waiting = match self.dispatch_job.as_ref().filter(|_| dispatching) {
                 Some(job) => fl!("workspace-dialog-job-waiting", status = job.status()),
-                None => fl!("workspace-dialog-daemon-waiting"),
+                None => self
+                    .menu
+                    .worktree
+                    .as_ref()
+                    .and_then(|source| source.reuse_notice.clone())
+                    .unwrap_or_else(|| fl!("workspace-dialog-daemon-waiting")),
             };
             body = body.child(
                 div()

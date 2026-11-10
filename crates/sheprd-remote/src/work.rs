@@ -11,8 +11,10 @@
 //! worker, never the UI thread.
 
 mod error;
+mod reuse;
 
 pub use error::{Error, Result, Step};
+pub use reuse::pull_existing;
 
 use crate::teleport::{AgentKind, Envelope, Host, WorktreeCreated};
 use error::script;
