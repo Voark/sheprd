@@ -193,6 +193,9 @@ pub struct Config {
     pub cloud: CloudConfig,
     pub code: CodeConfig,
     pub coder: CoderConfig,
+    /// Whether a tab close also asks when none of its agents is working or
+    /// blocked. Only read while `confirm_close_tab` is on.
+    pub confirm_close_idle_tab: bool,
     pub confirm_close_pane: bool,
     pub confirm_close_tab: bool,
     /// Whether a workspace close shows its dialog when the check finds no
@@ -431,6 +434,7 @@ impl Default for Config {
             cloud: CloudConfig::default(),
             code: CodeConfig::default(),
             coder: CoderConfig::default(),
+            confirm_close_idle_tab: false,
             confirm_close_pane: true,
             confirm_close_tab: true,
             confirm_close_workspace: true,
@@ -527,6 +531,7 @@ struct Settings {
     cloud: CloudConfig,
     code: CodeConfig,
     coder: CoderConfig,
+    confirm_close_idle_tab: Option<bool>,
     confirm_close_pane: Option<bool>,
     confirm_close_tab: Option<bool>,
     confirm_close_workspace: Option<bool>,
@@ -887,6 +892,7 @@ impl Config {
         }
         // keep-sorted start
         config.agent_checkpoints = settings.agent_checkpoints.unwrap_or(true);
+        config.confirm_close_idle_tab = settings.confirm_close_idle_tab.unwrap_or(false);
         config.confirm_close_pane = settings.confirm_close_pane.unwrap_or(true);
         config.confirm_close_tab = settings.confirm_close_tab.unwrap_or(true);
         config.confirm_close_workspace = settings.confirm_close_workspace.unwrap_or(true);

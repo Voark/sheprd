@@ -4,6 +4,7 @@ use core::prelude::v1::test;
 use std::sync::Arc;
 
 mod en_xa;
+mod idle_tab;
 mod interrupts;
 mod pane_option;
 

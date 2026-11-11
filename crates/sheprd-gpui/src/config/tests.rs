@@ -17,6 +17,7 @@ mod cloud_setup;
 mod code;
 mod code_navigation;
 mod code_start;
+mod confirm_close_idle_tab;
 mod coordinator_suffix;
 mod default_fonts;
 mod device_footer;

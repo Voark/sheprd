@@ -55,6 +55,10 @@ language = "system"
 
 # Ask before closing a tab (closing terminates its terminal processes).
 confirm_close_tab = true
+# Also ask for a tab whose agents are idle or done, or that has none. By
+# default only a tab with an agent working or blocked on a prompt asks.
+# Has no effect while confirm_close_tab is false.
+confirm_close_idle_tab = false
 # Ask before closing a pane, independently of tabs. The dialog's "Do not ask
 # again" checkbox sets this to false in config-gpui.local.toml.
 confirm_close_pane = true

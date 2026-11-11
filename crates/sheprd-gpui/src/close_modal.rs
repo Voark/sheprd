@@ -215,7 +215,8 @@ impl SheprdWindow {
 
     /// Shows the confirmation in a menu the caller has already opened and
     /// fenced, or closes straight away when confirmation is turned off for the
-    /// target kind or a tab has no agent mid-task. The immediate close still
+    /// target kind or a tab has no agent mid-task and `confirm_close_idle_tab`
+    /// does not ask for it anyway. The immediate close still
     /// goes through `confirm_close`, so its connection and target checks hold
     /// and a refusal stays visible in the dialog.
     pub(super) fn present_close(
@@ -228,11 +229,12 @@ impl SheprdWindow {
             !self.config.confirm_close_pane
         } else {
             !self.config.confirm_close_tab
-                || !self
-                    .live
-                    .snapshot
-                    .as_ref()
-                    .is_some_and(|snapshot| close.interrupts_agent(snapshot))
+                || !(self.config.confirm_close_idle_tab
+                    || self
+                        .live
+                        .snapshot
+                        .as_ref()
+                        .is_some_and(|snapshot| close.interrupts_agent(snapshot)))
         };
         self.menu.close = Some(close);
         self.menu.page = Some(Page::ConfirmClose);
