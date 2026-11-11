@@ -247,7 +247,7 @@ impl SheprdWindow {
     }
 
     /// Closes the tab `group` shows, for Close Tab: a page at once, a Herdr
-    /// tab through its confirmation.
+    /// tab or a herdr-core terminal tab through its confirmation.
     pub(crate) fn close_group_tab(
         &mut self,
         group: GroupId,
@@ -256,7 +256,7 @@ impl SheprdWindow {
     ) {
         match self.group_pick(group) {
             Some(Pick::Herdr(tab)) => self.open_tab_close(&tab, window, cx),
-            Some(Pick::Page(id)) => self.close_browser_tab(id, window, cx),
+            Some(Pick::Page(id)) => self.close_page_tab(id, window, cx),
             None => {}
         }
     }

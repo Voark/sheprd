@@ -272,7 +272,8 @@ impl SheprdWindow {
                     );
                 }
             }
-            (Action::Close, Target::Tab(_)) => self.close_browser_tab(tab, window, cx),
+            // As the tab's own close button: the close confirmation decides.
+            (Action::Close, Target::Tab(_)) => self.close_page_tab(tab, window, cx),
             (Action::Close, Target::Pane { terminal, .. }) => {
                 self.close_core_pane(tab, terminal, window, cx)
             }

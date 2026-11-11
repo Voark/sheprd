@@ -1161,8 +1161,10 @@ a browser tab is focused, the same commands zoom its page instead (see
 A tab asks before closing only while one of its agents is working or blocked
 on a prompt; tabs whose agents are idle or done, or that have none, close at
 once. Set top-level `confirm_close_idle_tab = true` to ask for those tabs
-too, so no tab closes on a single click of its close button; it defaults to
-`false`. Set `confirm_close_tab = false` to never ask for tabs
+too, and for Herdr 2 terminal tabs, which otherwise never ask, so no terminal
+tab closes on a single click of its close button; a mirror, which only
+watches, and a browser page still close at once. It defaults to `false`. Set
+`confirm_close_tab = false` to never ask for tabs
 (including their running processes), `confirm_close_pane = false` to close
 panes without asking, `confirm_close_workspace = false` to close a workspace
 from its menu without the dialog, and `show_agents = false` to hide the Agents

@@ -474,8 +474,8 @@ impl SheprdWindow {
             })
     }
 
-    /// Closes a strip's tab as its close button does: a page at once and a
-    /// Herdr tab through its confirmation.
+    /// Closes a strip's tab as its close button does: a page at once, and a
+    /// Herdr tab or a herdr-core terminal tab through its confirmation.
     pub(crate) fn close_strip_tab(
         &mut self,
         pick: Pick,
@@ -484,7 +484,7 @@ impl SheprdWindow {
     ) {
         match pick {
             Pick::Herdr(tab) => self.open_tab_close(&tab, window, cx),
-            Pick::Page(id) => self.close_browser_tab(id, window, cx),
+            Pick::Page(id) => self.close_page_tab(id, window, cx),
         }
     }
 

@@ -13,6 +13,7 @@ use sheprd_client::{
     protocol::{AgentStatus, ClientShellSnapshot},
 };
 
+mod core_tab;
 mod sequence;
 
 pub(crate) use sequence::CloseRun;
@@ -23,6 +24,9 @@ pub(super) struct CloseConfirmation {
     workspace: String,
     tab: String,
     pane: Option<String>,
+    /// A herdr-core tab, which the app closes itself: the daemon's boot,
+    /// tab, and pane above are then unused.
+    core: Option<crate::browser::TabId>,
     label: String,
     /// The agents closing it would interrupt, as the dialog names them.
     interrupts: Option<String>,
@@ -53,6 +57,7 @@ impl CloseConfirmation {
             workspace: tab.workspace_id.clone(),
             tab: tab.tab_id.clone(),
             pane: None,
+            core: None,
             label: tab.label.clone(),
             interrupts: None,
             confirm_selected: false,
@@ -87,6 +92,7 @@ impl CloseConfirmation {
             workspace: tab.workspace_id.clone(),
             tab: tab.tab_id.clone(),
             pane: pane.map(|pane| pane.pane_id.clone()),
+            core: None,
             label: pane
                 .map(|pane| pane.label.clone().unwrap_or_else(|| pane.pane_id.clone()))
                 .unwrap_or_else(|| tab.label.clone()),
@@ -271,6 +277,12 @@ impl SheprdWindow {
         cx: &mut Context<Self>,
     ) -> Option<Preference> {
         let close = self.menu.close.as_ref()?;
+        if let Some(id) = close.core {
+            // No daemon request to refuse: the app removes the tab itself.
+            self.dismiss_menu(window, cx);
+            self.close_browser_tab(id, window, cx);
+            return None;
+        }
         let result = (|| {
             if !self.menu_target_current() || !self.input_ready() {
                 return Err(Error::StaleConnection);
