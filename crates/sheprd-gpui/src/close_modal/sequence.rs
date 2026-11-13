@@ -1,16 +1,16 @@
 //! Closing several tabs one after another, as Close Others does. Each tab
-//! closes as its own close button would: a page at once, a Herdr tab through
-//! its confirmation. The next terminal tab waits for the one before it to
+//! closes as its own close button would: a page at once, a Herdr tab or a
+//! herdr-core terminal tab through its confirmation. The next terminal tab waits for the one before it to
 //! be gone and the connection's surface barrier to settle, so two dialogs
 //! never overlap, and a close the user declines ends the run
 //! with the tabs that are left still open.
 
 use crate::{
     SheprdWindow,
-    browser::{Pick, Scope},
+    browser::{Pick, Scope, Store, TabId},
     menu::Page,
 };
-use gpui::{Context, Window};
+use gpui::{App, Context, Window};
 use std::{
     collections::VecDeque,
     time::{Duration, Instant},
@@ -27,6 +27,14 @@ pub(crate) struct CloseRun {
     current: Option<String>,
     /// When its close went to the daemon.
     sent: Option<Instant>,
+    /// The herdr-core tab whose close is being decided in its dialog.
+    asking: Option<TabId>,
+}
+
+/// Whether the app's store still holds tab `id`.
+fn page_open(id: TabId, cx: &App) -> bool {
+    cx.try_global::<Store>()
+        .is_some_and(|store| store.get(id).is_some())
 }
 
 impl SheprdWindow {
@@ -45,6 +53,7 @@ impl SheprdWindow {
             rest: tabs.into(),
             current: None,
             sent: None,
+            asking: None,
         });
         self.advance_close_run(window, cx);
     }
@@ -80,6 +89,17 @@ impl SheprdWindow {
             return;
         }
         loop {
+            if let Some(id) = run.asking {
+                if self.confirming_core_tab(id) {
+                    break;
+                }
+                run.asking = None;
+                // Declined: the rest stay open.
+                if page_open(id, cx) {
+                    return;
+                }
+                continue;
+            }
             if let Some(tab) = run.current.clone() {
                 // A tab whose close waits for its undo window is closed here.
                 let open = !self.browser.undo.waits(&run.workspace.0, &tab)
@@ -109,7 +129,18 @@ impl SheprdWindow {
             }
             match run.rest.pop_front() {
                 None => return,
-                Some(Pick::Page(id)) => self.close_browser_tab(id, window, cx),
+                Some(Pick::Page(id)) => {
+                    // A page closes at once; a herdr-core terminal tab may ask.
+                    self.close_page_tab(id, window, cx);
+                    if self.confirming_core_tab(id) {
+                        run.asking = Some(id);
+                        break;
+                    }
+                    // A dialog that could not open keeps its tab, and the rest.
+                    if page_open(id, cx) {
+                        return;
+                    }
+                }
                 Some(Pick::Herdr(tab)) => {
                     run.current = Some(tab.clone());
                     run.sent = None;

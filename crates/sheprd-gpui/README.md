@@ -3112,7 +3112,8 @@ tabs. Splitting opens nothing new and moves no tab.
   is what is saved.
 - Closing a tab closes it for good, split or not: a tab's close button and
   its right-click **Close Tab** close a page at once and a Herdr tab in
-  Herdr, through its confirmation. Split, **…** offers **Close Tab**, which
+  Herdr, through its confirmation. A Herdr 2 terminal tab closes at once
+  too, unless `confirm_close_idle_tab = true` has it ask first. Split, **…** offers **Close Tab**, which
   does the same for the tab the group shows; **Close Others**, which closes
   the group's other tabs one after another, each as its own close button
   would, and stops at the first close you decline; and **Close Group**,

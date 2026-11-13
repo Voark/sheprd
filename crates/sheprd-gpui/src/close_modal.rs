@@ -34,6 +34,8 @@ pub(super) struct CloseConfirmation {
     /// Pane closes only: confirming also saves `confirm_close_pane = false`.
     do_not_ask_again: bool,
     error: Option<String>,
+    /// A herdr-core tab's dialog only: what held the keyboard as it opened.
+    return_focus: Option<core_tab::ReturnFocus>,
 }
 
 impl CloseConfirmation {
@@ -63,6 +65,7 @@ impl CloseConfirmation {
             confirm_selected: false,
             do_not_ask_again: false,
             error: None,
+            return_focus: None,
         };
         close.interrupts = close.interrupted(snapshot);
         Some(close)
@@ -100,6 +103,7 @@ impl CloseConfirmation {
             confirm_selected: false,
             do_not_ask_again: false,
             error: None,
+            return_focus: None,
         };
         close.interrupts = close.interrupted(snapshot);
         Some(close)
